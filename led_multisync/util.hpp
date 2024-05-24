@@ -23,11 +23,11 @@ extern esp_now_peer_info_t peerInfo;
 extern DMD dmd;
 extern PatternAnimator p10;
 
-void serial2_get_data(String raw_serial2, String& data);
+std::string serial2_get_data(const char* prefix, const char* suffix);
 
 void register_peers(UniqueQueue& slave_queue);
 
-void connect_cloud();
+bool connect_cloud();
 
 int32_t getWiFiChannel(const char* ssid);
 

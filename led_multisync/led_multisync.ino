@@ -67,6 +67,7 @@
 #include "master.hpp"
 #include "slave.hpp"
 #include "uqueue.hpp"
+#include "espnow_role_manager.hpp"
 
 
 #define DISPLAYS_ACROSS 2
@@ -135,11 +136,15 @@ String id;
 
 bool MASTER = true;
 bool SLAVE = false;
-bool INIT = true;
+
+// volatile bool roleChangeRequested = false; // Flag to indicate role change request
+// volatile bool newMasterRole = false;       // Flag to indicate the new role
 
 UniqueQueue slave_queue(false);
 UniqueQueue proxy_queue(true);
 uint8_t copied_mac[6];
+
+EspNowRoleManager role_manager(on_role_change, false, false);
 
 
 enum class Animation
@@ -167,8 +172,23 @@ std::vector<std::vector<int>> self_anim_part;
   Interrupt handler for Timer1 (TimerOne) driven DMD refresh scanning, this gets
   called at the period set in Timer1.initialize();
   --------------------------------------------------------------------------------------*/
+// volatile bool scanFlag = false;
+QueueHandle_t scanQueue;
+// void IRAM_ATTR triggerScan() {
+//     dmd.scanDisplayBySPI();
+// }
 void IRAM_ATTR triggerScan() {
-    dmd.scanDisplayBySPI();
+    uint8_t dummy = 0;
+    xQueueSendFromISR(scanQueue, &dummy, NULL);
+}
+
+void scanTask(void* parameter) {
+    uint8_t dummy;
+    for (;;) {
+        if (xQueueReceive(scanQueue, &dummy, portMAX_DELAY)) {
+            dmd.scanDisplayBySPI();
+        }
+    }
 }
 
 void anim_drawMarquee(const char* bChars, byte length) {
@@ -184,20 +204,9 @@ void anim_drawMarquee(const char* bChars, byte length) {
     }
 }
 
-/*--------------------------------------------------------------------------------------
-  setup
-  Called by the Arduino architecture before the main loop begins
-  --------------------------------------------------------------------------------------*/
-void setup(void) {
-    Serial.begin(115200);
-    Serial2.begin(9600);
+void on_role_change(bool master, bool slave) {
 
-    if (INIT) {
-        // send mac to first ESP
-        // master or slave?
-        ;
-    }
-    if (MASTER) {
+    if (master) {
         // ESP-NOW and WiFi working simultaneously
         // Set device as a Wi-Fi Station
         WiFi.mode(WIFI_AP_STA);
@@ -224,14 +233,13 @@ void setup(void) {
         // Once ESPNow is successfully Init, we will register for Send CB to
         // get the status of Trasnmitted packet
         esp_now_register_send_cb(on_data_sent_master);
+        // register_peers(slave_queue);
+        if (connect_cloud()) {
+            Serial.println("Master successfully subscribed to cloud");
+            role_manager.set_cloud_connected();
+        }
 
-        pinMode(LED_BUILTIN, OUTPUT);   // blue led on chip to notify boot is pressed
-        digitalWrite(LED_BUILTIN, LOW); // start off
-
-
-        register_peers(slave_queue);
-        connect_cloud();
-    } else if (SLAVE) {
+    } else if (slave) {
         // Set device as a Wi-Fi Station
         WiFi.mode(WIFI_STA);
 
@@ -257,9 +265,6 @@ void setup(void) {
         // get the status of Trasnmitted packet
         esp_now_register_send_cb(on_data_sent_slave);
 
-        pinMode(LED_BUILTIN, OUTPUT);   // blue led on chip to notify boot is pressed
-        digitalWrite(LED_BUILTIN, LOW); // start off
-
         // Register peer
         peerInfo.channel = 0;
         peerInfo.encrypt = false;
@@ -271,6 +276,20 @@ void setup(void) {
             return;
         }
     }
+    // isMaster = master;
+    Serial.println(master ? "MASTER" : "SLAVE");
+}
+
+/*--------------------------------------------------------------------------------------
+  setup
+  Called by the Arduino architecture before the main loop begins
+  --------------------------------------------------------------------------------------*/
+void setup(void) {
+    Serial.begin(115200);
+    Serial2.begin(9600);
+
+    scanQueue = xQueueCreate(10, sizeof(uint8_t));
+    xTaskCreate(scanTask, "Scan Task", 2048, NULL, 1, NULL);
 
     // return the clock speed of the CPU
     uint8_t cpuClock = ESP.getCpuFreqMHz();
@@ -288,7 +307,6 @@ void setup(void) {
     dmd.clearScreen(true); // true is normal (all pixels off), false is negative (all pixels on)
 
     Serial.println("Screen Started");
-    Serial.println("Waiting For Serial Datas");
 }
 
 
@@ -536,6 +554,30 @@ void multianim_scrolling_marquee() {
   loop
   Arduino architecture main loop
   --------------------------------------------------------------------------------------*/
+void serial2_get_data() {
+    if (Serial2.available() > 0) {
+        raw_serial2 = Serial2.readStringUntil('\n');
+        Serial.println("raw_serial2: " + raw_serial2);
+        if (raw_serial2.indexOf("p_") >= 0 && raw_serial2.indexOf("!") >= 0) {
+            screen_test_string = raw_serial2.substring(raw_serial2.indexOf("p_") + 2, raw_serial2.indexOf("!"));
+            Serial.println("screen_test_string: " + screen_test_string);
+            yield();
+        }
+        if (raw_serial2.indexOf("pst_") >= 0 && raw_serial2.indexOf("!") >= 0) {
+            data_from_serial2 = raw_serial2.substring(raw_serial2.indexOf("pst_") + 4, raw_serial2.indexOf("!"));
+            Serial.println("data_from_serial2: " + data_from_serial2);
+            //screen_test_string = data_from_serial2;
+            yield();
+        }
+        if (raw_serial2.indexOf("ms_") >= 0 && raw_serial2.indexOf("!") >= 0) {
+            data_from_serial2 = raw_serial2.substring(raw_serial2.indexOf("ms_") + 3, raw_serial2.indexOf("!"));
+            Serial.println("data_from_serial2: " + data_from_serial2);
+            //screen_test_string = data_from_serial2;
+            yield();
+        }
+        // change_wifi_Command();
+    }
+}
 
 
 void loop(void) {
@@ -546,12 +588,26 @@ void loop(void) {
     dmd.clearScreen(true);
     dmd.selectFont(System5x7);
 
-    if (MASTER) {
+    auto cmd = serial2_get_data("ms_", "!");
+
+    if (cmd == "0") {
+        Serial.println(cmd.c_str());
+        role_manager.set_slave();
+    } else if (cmd == "1") {
+        Serial.println(cmd.c_str());
+        role_manager.set_master();
+    }
+
+    if (role_manager.is_cloud_connected()) {
+        ;
+    }
+
+    if (role_manager.is_master()) {
         multianim_diagonal_shift_fold();
         // multianim_scrolling_marquee();
         // multianim_diagonal_shift();
         delay(1);
-    } else if (SLAVE) {
+    } else if (role_manager.is_slave()) {
         if (should_animate) {
             if (message_to_rcv_slave.flags.test(0)) {
                 p10.draw_pattern_static(reconstructedGrid, 4, 0);

@@ -2,6 +2,8 @@
 #include "master.hpp"
 #include "uqueue.hpp"
 #include <Arduino.h>
+#include <cstring>
+
 
 uint8_t broadcastAddress_1[6] = {0x48, 0xE7, 0x29, 0xB7, 0xE1, 0xCC};
 uint8_t broadcastAddress_2[6] = {0x78, 0x21, 0x84, 0xBB, 0x9F, 0x18};
@@ -9,24 +11,22 @@ uint8_t broadcastAddress_3[6] = {0x40, 0x22, 0xD8, 0x6E, 0x7F, 0xCC};
 
 esp_now_peer_info_t peerInfo;
 
-void serial2_get_data(String raw_serial2, String& data) {
+std::string serial2_get_data(const char* prefix, const char* suffix) {
     if (Serial2.available() > 0) {
-        raw_serial2 = Serial2.readStringUntil('\n');
-        Serial.println("raw_serial2: " + raw_serial2);
-        if (raw_serial2.indexOf("p_") >= 0 && raw_serial2.indexOf("!") >= 0) {
-            data = raw_serial2.substring(raw_serial2.indexOf("p_") + 2, raw_serial2.indexOf("!"));
-            Serial.println("screen_test_string: " + data);
-            yield();
+        String raw_serial2 = Serial2.readStringUntil('\n');
+        // Serial.print("raw_serial2: ");
+        // Serial.print(raw_serial2);
+        // Serial.println();
+        if (raw_serial2.indexOf(prefix) >= 0 && raw_serial2.indexOf(suffix) >= 0) {
+            // yield();
+            int prefix_end_index = raw_serial2.indexOf(prefix) + static_cast<int>(std::strlen(prefix));
+            int suffix_start_index = raw_serial2.indexOf(suffix);
+            return std::string(raw_serial2.substring(prefix_end_index, suffix_start_index).c_str());
         }
-        if (raw_serial2.indexOf("pst_") >= 0 && raw_serial2.indexOf("!") >= 0) {
-            data = raw_serial2.substring(raw_serial2.indexOf("pst_") + 4, raw_serial2.indexOf("!"));
-            Serial.println("data_from_serial2: " + data);
-            //screen_test_string = data_from_serial2;
-            yield();
-        }
-        // change_wifi_Command();
     }
+    return std::string("");
 }
+
 
 void register_peers(UniqueQueue& slave_queue) {
     // Register peer
@@ -59,13 +59,13 @@ void register_peers(UniqueQueue& slave_queue) {
 }
 
 
-void connect_cloud() {
+bool connect_cloud() {
     const char* server_endpoint = "https://panel.xsarj.com/led/subscribe_master";
 
     // Serialize JSON document
     JsonDocument doc;
     doc["master_mac"] = WiFi.macAddress();
-    doc["led_count"] = 4;
+    // doc["led_count"] = 4;
 
     std::string json;
     serializeJson(doc, json);
@@ -79,13 +79,35 @@ void connect_cloud() {
     http.addHeader("Accept", "*/*");
     http.addHeader("User-Agent", "PostmanRuntime/7.26.8");
     http.setConnectTimeout(5000);
-    http.POST(json.c_str());
 
-    // Read response
-    Serial.print(http.getString());
+    bool success = false;
+
+    int http_response_code = http.POST(json.c_str());
+    if (http_response_code > 0) {
+        String response = http.getString();
+        JsonDocument response_doc;
+        DeserializationError error = deserializeJson(response_doc, response);
+
+        if (!error) {
+            if (response_doc.containsKey("status") && response_doc["status"] == "OK") {
+                success = true;
+            }
+        } else {
+            Serial.print("deserializeJson() failed: ");
+            Serial.println(error.c_str());
+        }
+        Serial.println(response);
+    } else {
+        // Print error message if the request failed
+        Serial.print("Error on HTTP request: ");
+        Serial.println(http_response_code);
+    }
+
 
     // Disconnect
     http.end();
+
+    return success;
 }
 
 
