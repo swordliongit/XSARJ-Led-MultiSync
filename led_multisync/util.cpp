@@ -87,27 +87,53 @@ bool connect_cloud() {
         String response = http.getString();
         JsonDocument response_doc;
         DeserializationError error = deserializeJson(response_doc, response);
-
+        Serial.println("After Deserialization");
         if (!error) {
-            if (response_doc.containsKey("status") && response_doc["status"] == "OK") {
+            Serial.println("After Error check");
+            if (response_doc["result"].containsKey("status") && response_doc["result"]["status"] == "OK") {
                 success = true;
+                Serial.println("success set to true");
             }
         } else {
             Serial.print("deserializeJson() failed: ");
             Serial.println(error.c_str());
         }
         Serial.println(response);
+        Serial.println("After print response");
+
     } else {
         // Print error message if the request failed
         Serial.print("Error on HTTP request: ");
         Serial.println(http_response_code);
     }
-
-
     // Disconnect
     http.end();
 
     return success;
+}
+
+void send_heartbeat() {
+    Serial.println("Heartbeat sent...");
+    const char* server_endpoint = "https://panel.xsarj.com/led/heartbeat";
+
+    // Serialize JSON document
+    JsonDocument doc;
+    doc["master_mac"] = WiFi.macAddress();
+
+    std::string json;
+    serializeJson(doc, json);
+
+    HTTPClient http;
+    // Send request
+    http.begin(server_endpoint);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Connection", "keep-alive");
+    http.addHeader("Accept-Encoding", "gzip, deflate, br");
+    http.addHeader("Accept", "*/*");
+    http.addHeader("User-Agent", "PostmanRuntime/7.26.8");
+    http.setConnectTimeout(5000);
+
+    int http_response_code = http.POST(json.c_str());
 }
 
 

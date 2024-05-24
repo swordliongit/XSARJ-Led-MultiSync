@@ -233,7 +233,7 @@ void on_role_change(bool master, bool slave) {
         // Once ESPNow is successfully Init, we will register for Send CB to
         // get the status of Trasnmitted packet
         esp_now_register_send_cb(on_data_sent_master);
-        // register_peers(slave_queue);
+        register_peers(slave_queue);
         if (connect_cloud()) {
             Serial.println("Master successfully subscribed to cloud");
             role_manager.set_cloud_connected();
@@ -598,8 +598,8 @@ void loop(void) {
         role_manager.set_master();
     }
 
-    if (role_manager.is_cloud_connected()) {
-        ;
+    if (role_manager.is_master() && role_manager.is_cloud_connected()) {
+        run_every_seconds(10000, send_heartbeat);
     }
 
     if (role_manager.is_master()) {
