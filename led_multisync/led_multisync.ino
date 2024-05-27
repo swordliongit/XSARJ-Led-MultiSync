@@ -144,7 +144,7 @@ UniqueQueue slave_queue(false);
 UniqueQueue proxy_queue(true);
 uint8_t copied_mac[6];
 
-EspNowRoleManager role_manager(on_role_change, false, false);
+// EspNowRoleManager role_manager(on_role_change, false, false);
 
 
 enum class Animation
@@ -236,7 +236,7 @@ void on_role_change(bool master, bool slave) {
         register_peers(slave_queue);
         if (connect_cloud()) {
             Serial.println("Master successfully subscribed to cloud");
-            role_manager.set_cloud_connected();
+            EspNowRoleManager::instance().set_cloud_connected();
         }
 
     } else if (slave) {
@@ -290,6 +290,8 @@ void setup(void) {
 
     scanQueue = xQueueCreate(10, sizeof(uint8_t));
     xTaskCreate(scanTask, "Scan Task", 2048, NULL, 1, NULL);
+
+    EspNowRoleManager::init(on_role_change, false, false);
 
     // return the clock speed of the CPU
     uint8_t cpuClock = ESP.getCpuFreqMHz();
@@ -554,30 +556,6 @@ void multianim_scrolling_marquee() {
   loop
   Arduino architecture main loop
   --------------------------------------------------------------------------------------*/
-void serial2_get_data() {
-    if (Serial2.available() > 0) {
-        raw_serial2 = Serial2.readStringUntil('\n');
-        Serial.println("raw_serial2: " + raw_serial2);
-        if (raw_serial2.indexOf("p_") >= 0 && raw_serial2.indexOf("!") >= 0) {
-            screen_test_string = raw_serial2.substring(raw_serial2.indexOf("p_") + 2, raw_serial2.indexOf("!"));
-            Serial.println("screen_test_string: " + screen_test_string);
-            yield();
-        }
-        if (raw_serial2.indexOf("pst_") >= 0 && raw_serial2.indexOf("!") >= 0) {
-            data_from_serial2 = raw_serial2.substring(raw_serial2.indexOf("pst_") + 4, raw_serial2.indexOf("!"));
-            Serial.println("data_from_serial2: " + data_from_serial2);
-            //screen_test_string = data_from_serial2;
-            yield();
-        }
-        if (raw_serial2.indexOf("ms_") >= 0 && raw_serial2.indexOf("!") >= 0) {
-            data_from_serial2 = raw_serial2.substring(raw_serial2.indexOf("ms_") + 3, raw_serial2.indexOf("!"));
-            Serial.println("data_from_serial2: " + data_from_serial2);
-            //screen_test_string = data_from_serial2;
-            yield();
-        }
-        // change_wifi_Command();
-    }
-}
 
 
 void loop(void) {
@@ -592,22 +570,27 @@ void loop(void) {
 
     if (cmd == "0") {
         Serial.println(cmd.c_str());
-        role_manager.set_slave();
+        EspNowRoleManager::instance().set_slave();
     } else if (cmd == "1") {
         Serial.println(cmd.c_str());
-        role_manager.set_master();
+        EspNowRoleManager::instance().set_master();
     }
 
-    if (role_manager.is_master() && role_manager.is_cloud_connected()) {
+    if (EspNowRoleManager::instance().is_master() && EspNowRoleManager::instance().is_cloud_connected()) {
         run_every_seconds(10000, send_heartbeat);
     }
+    Serial.print("From Loop: ");
+    Serial.println(EspNowRoleManager::instance().is_update_required());
+    if (EspNowRoleManager::instance().is_update_required()) {
+        Serial.println("Update Required...");
+    }
 
-    if (role_manager.is_master()) {
+    if (EspNowRoleManager::instance().is_master()) {
         multianim_diagonal_shift_fold();
         // multianim_scrolling_marquee();
         // multianim_diagonal_shift();
         delay(1);
-    } else if (role_manager.is_slave()) {
+    } else if (EspNowRoleManager::instance().is_slave()) {
         if (should_animate) {
             if (message_to_rcv_slave.flags.test(0)) {
                 p10.draw_pattern_static(reconstructedGrid, 4, 0);

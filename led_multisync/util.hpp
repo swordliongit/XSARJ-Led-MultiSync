@@ -10,8 +10,9 @@
 #include <bitset>
 #include <functional>
 #include <tuple>
-#include "uqueue.hpp"
 
+#include "uqueue.hpp"
+#include "espnow_role_manager.hpp"
 #include "pattern_animator.hpp"
 
 #include <DMD32.h> //

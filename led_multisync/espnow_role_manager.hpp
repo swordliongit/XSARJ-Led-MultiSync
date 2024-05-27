@@ -10,45 +10,68 @@ private:
     bool _master;
     bool _slave;
     bool _master_subscribed;
+    bool _should_update;
+    bool update_required;
+    EspNowRoleManager(std::function<void(bool, bool)>&& callback, bool master, bool slave) {
+    }
+    EspNowRoleManager(const EspNowRoleManager& role_manager) = delete;
+    EspNowRoleManager& operator=(const EspNowRoleManager& role_manager) = delete;
 
 public:
-    EspNowRoleManager(std::function<void(bool, bool)>&& callback, bool master, bool slave) : _callback(std::move(callback)), _master(master), _slave(slave) {
+    static EspNowRoleManager& instance() {
+        static EspNowRoleManager instance(nullptr, false, false);
+        return instance;
+    }
+
+    static void init(std::function<void(bool, bool)>&& callback, bool master, bool slave) {
+        EspNowRoleManager& instance = getInstance();
+        instance._callback = std::move(callback);
+        instance._master = master;
+        instance._slave = slave;
     }
 
     void set_slave() {
-        if (!this->is_slave()) {
-            this->_slave = true;
-            this->_master = false;
-            this->_callback(this->_master, this->_slave);
+        if (!is_slave()) {
+            _slave = true;
+            _master = false;
+            _callback(_master, _slave);
             // roleChangeRequested = true;
             // newMasterRole = false;
         }
     }
 
     void set_master() {
-        if (!this->is_master()) {
-            this->_slave = false;
-            this->_master = true;
-            this->_callback(this->_master, this->_slave);
+        if (!is_master()) {
+            _slave = false;
+            _master = true;
+            _callback(_master, _slave);
             // roleChangeRequested = true;
             // newMasterRole = true;
         }
     }
 
     bool is_slave() {
-        return this->_slave;
+        return _slave;
     }
 
     bool is_master() {
-        return this->_master;
+        return _master;
     }
 
     void set_cloud_connected() {
-        this->_master_subscribed = true;
+        _master_subscribed = true;
     }
 
     bool is_cloud_connected() {
-        return this->_master_subscribed;
+        return _master_subscribed;
+    }
+
+    void set_update_required(bool state) {
+        _should_update = state;
+    }
+
+    bool is_update_required() {
+        return _should_update;
     }
 };
 

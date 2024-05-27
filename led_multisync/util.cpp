@@ -87,19 +87,14 @@ bool connect_cloud() {
         String response = http.getString();
         JsonDocument response_doc;
         DeserializationError error = deserializeJson(response_doc, response);
-        Serial.println("After Deserialization");
         if (!error) {
-            Serial.println("After Error check");
             if (response_doc["result"].containsKey("status") && response_doc["result"]["status"] == "OK") {
                 success = true;
-                Serial.println("success set to true");
             }
         } else {
-            Serial.print("deserializeJson() failed: ");
             Serial.println(error.c_str());
         }
         Serial.println(response);
-        Serial.println("After print response");
 
     } else {
         // Print error message if the request failed
@@ -113,7 +108,9 @@ bool connect_cloud() {
 }
 
 void send_heartbeat() {
-    Serial.println("Heartbeat sent...");
+
+    EspNowRoleManager& role_manager = EspNowRoleManager::instance();
+
     const char* server_endpoint = "https://panel.xsarj.com/led/heartbeat";
 
     // Serialize JSON document
@@ -134,8 +131,30 @@ void send_heartbeat() {
     http.setConnectTimeout(5000);
 
     int http_response_code = http.POST(json.c_str());
-}
+    if (http_response_code > 0) {
+        Serial.println("Heartbeat sent...");
 
+        String response = http.getString();
+        JsonDocument response_doc;
+        DeserializationError error = deserializeJson(response_doc, response);
+        if (!error) {
+            if (response_doc["result"].containsKey("should_update")) {
+                bool should_update = response_doc["result"]["should_update"];
+                role_manager.set_update_required(should_update);
+                Serial.println(role_manager.is_update_required());
+            } else {
+                Serial.print("deserializeJson() failed: ");
+                Serial.println(error.c_str());
+            }
+            Serial.println(response);
+
+        } else {
+            // Print error message if the request failed
+            Serial.print("Error on HTTP request: ");
+            Serial.println(http_response_code);
+        }
+    }
+}
 
 int32_t getWiFiChannel(const char* ssid) {
     if (int32_t n = WiFi.scanNetworks()) {
