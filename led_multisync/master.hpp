@@ -6,6 +6,12 @@
 #include <bitset>
 #include "esp_system.h"
 #include <Arduino.h>
+#include <vector>
+#include <ArduinoJson.h>
+#include <array>
+
+#include "espnow_role_manager.hpp"
+#include "util.hpp"
 
 extern const bool DEBUG;
 
@@ -33,5 +39,8 @@ extern struct_message_to_send_master message_to_send_master;
 
 void on_data_sent_master(const uint8_t* mac_addr, esp_now_send_status_t status);
 void on_data_recv_master(const uint8_t* mac, const uint8_t* incomingData, int len);
+bool connect_cloud();
+void send_heartbeat();
+void get_action_from_cloud();
 
 #endif

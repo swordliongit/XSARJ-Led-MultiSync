@@ -236,7 +236,7 @@ void on_role_change(bool master, bool slave) {
         register_peers(slave_queue);
         if (connect_cloud()) {
             Serial.println("Master successfully subscribed to cloud");
-            EspNowRoleManager::instance().set_cloud_connected();
+            EspNowRoleManager::get_instance().set_cloud_connected();
         }
 
     } else if (slave) {
@@ -317,7 +317,7 @@ void multianim_horizontal_shift() {
     constexpr int SWITCH_DELAY = ANIM_DELAY * 4;
     bool flip = false;
 
-    message_to_send_master.flags.set(0);
+    // message_to_send_master.flags.set(0);
 
     // Animate Self
     std::vector<std::vector<int>> temp = p10.grid;
@@ -396,7 +396,7 @@ void multianim_diagonal_shift() {
     bool flip = false;
     // p10.draw_pattern_static(p10.grid, 4, 0);
     // delay(1);
-    message_to_send_master.flags.set(0);
+    // message_to_send_master.flags.set(0);
 
     std::vector<std::vector<int>> grid = p10.square_32;
     for (size_t i = 0; i < MAX_ROW + 1; i++) {
@@ -445,7 +445,7 @@ void multianim_diagonal_shift_fold() {
 
     std::vector<std::vector<int>> grid = p10.square_32;
 
-    message_to_send_master.flags.set(0);
+    // message_to_send_master.flags.set(0);
 
     for (size_t i = 0; i < MAX_ROW - shape_length; ++i) {
         // Animate Self
@@ -525,7 +525,7 @@ void multianim_diagonal_shift_fold() {
 }
 
 void multianim_scrolling_marquee() {
-    message_to_send_master.flags.set(1); // marquee on
+    // message_to_send_master.flags.set(1); // marquee on
 
     std::vector<const char*> bChars{"Adana", "Istanbul", "Bursa"};
 
@@ -566,31 +566,37 @@ void loop(void) {
     dmd.clearScreen(true);
     dmd.selectFont(System5x7);
 
+    // Get Role from the parent Esp32
     auto cmd = serial2_get_data("ms_", "!");
-
     if (cmd == "0") {
         Serial.println(cmd.c_str());
-        EspNowRoleManager::instance().set_slave();
+        EspNowRoleManager::get_instance().set_slave();
     } else if (cmd == "1") {
         Serial.println(cmd.c_str());
-        EspNowRoleManager::instance().set_master();
+        EspNowRoleManager::get_instance().set_master();
     }
 
-    if (EspNowRoleManager::instance().is_master() && EspNowRoleManager::instance().is_cloud_connected()) {
-        run_every_seconds(10000, send_heartbeat);
-    }
-    Serial.print("From Loop: ");
-    Serial.println(EspNowRoleManager::instance().is_update_required());
-    if (EspNowRoleManager::instance().is_update_required()) {
-        Serial.println("Update Required...");
+    // Master specific block
+    if (EspNowRoleManager::get_instance().is_master()) {
+        // If Led Endpoint connected, send heartbeat to check for updates
+        if (EspNowRoleManager::get_instance().is_cloud_connected()) {
+            run_every_seconds(15000, send_heartbeat);
+        }
+
+        if (EspNowRoleManager::get_instance().is_update_required()) {
+            // Serial.println("Update Required...");
+            get_action_from_cloud();
+        }
     }
 
-    if (EspNowRoleManager::instance().is_master()) {
-        multianim_diagonal_shift_fold();
-        // multianim_scrolling_marquee();
+
+    // Perform action
+    if (EspNowRoleManager::get_instance().is_master()) {
+        // multianim_diagonal_shift_fold();
+        multianim_scrolling_marquee();
         // multianim_diagonal_shift();
         delay(1);
-    } else if (EspNowRoleManager::instance().is_slave()) {
+    } else if (EspNowRoleManager::get_instance().is_slave()) {
         if (should_animate) {
             if (message_to_rcv_slave.flags.test(0)) {
                 p10.draw_pattern_static(reconstructedGrid, 4, 0);

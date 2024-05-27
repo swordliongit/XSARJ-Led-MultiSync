@@ -1,5 +1,8 @@
 #ifndef ESPNOW_ROLE_MANAGER
 #define ESPNOW_ROLE_MANAGER
+/*
+Singleton Class
+*/
 
 #include <functional>
 
@@ -18,13 +21,13 @@ private:
     EspNowRoleManager& operator=(const EspNowRoleManager& role_manager) = delete;
 
 public:
-    static EspNowRoleManager& instance() {
+    static EspNowRoleManager& get_instance() {
         static EspNowRoleManager instance(nullptr, false, false);
         return instance;
     }
 
     static void init(std::function<void(bool, bool)>&& callback, bool master, bool slave) {
-        EspNowRoleManager& instance = getInstance();
+        EspNowRoleManager& instance = get_instance();
         instance._callback = std::move(callback);
         instance._master = master;
         instance._slave = slave;

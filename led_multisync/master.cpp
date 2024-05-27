@@ -1,4 +1,6 @@
 #include "master.hpp"
+#include <WiFi.h>
+#include <HTTPClient.h>
 
 const bool DEBUG = false;
 
@@ -26,4 +28,174 @@ void on_data_recv_master(const uint8_t* mac, const uint8_t* incomingData, int le
 
     Serial.print("Bytes received: ");
     Serial.println(len);
+}
+
+
+bool connect_cloud() {
+    const char* server_endpoint = "https://panel.xsarj.com/led/subscribe_master";
+
+    // Serialize JSON document
+    JsonDocument doc;
+    doc["master_mac"] = WiFi.macAddress();
+    // doc["led_count"] = 4;
+
+    std::string json;
+    serializeJson(doc, json);
+
+    HTTPClient http;
+    // Send request
+    http.begin(server_endpoint);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Connection", "keep-alive");
+    http.addHeader("Accept-Encoding", "gzip, deflate, br");
+    http.addHeader("Accept", "*/*");
+    http.addHeader("User-Agent", "PostmanRuntime/7.26.8");
+    http.setConnectTimeout(5000);
+
+    bool success = false;
+
+    int http_response_code = http.POST(json.c_str());
+    if (http_response_code > 0) {
+        String response = http.getString();
+        JsonDocument response_doc;
+        DeserializationError error = deserializeJson(response_doc, response);
+        if (!error) {
+            if (response_doc["result"].containsKey("status") && response_doc["result"]["status"] == "OK") {
+                success = true;
+            }
+        } else {
+            Serial.println(error.c_str());
+        }
+        Serial.println(response);
+
+    } else {
+        // Print error message if the request failed
+        Serial.print("Error on HTTP request: ");
+        Serial.println(http_response_code);
+    }
+    // Disconnect
+    http.end();
+
+    return success;
+}
+
+void send_heartbeat() {
+
+    EspNowRoleManager& role_manager = EspNowRoleManager::get_instance();
+
+    const char* server_endpoint = "https://panel.xsarj.com/led/heartbeat";
+
+    // Serialize JSON document
+    JsonDocument doc;
+    doc["master_mac"] = WiFi.macAddress();
+
+    std::string json;
+    serializeJson(doc, json);
+
+    HTTPClient http;
+    // Send request
+    http.begin(server_endpoint);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Connection", "keep-alive");
+    http.addHeader("Accept-Encoding", "gzip, deflate, br");
+    http.addHeader("Accept", "*/*");
+    http.addHeader("User-Agent", "PostmanRuntime/7.26.8");
+    http.setConnectTimeout(5000);
+
+    int http_response_code = http.POST(json.c_str());
+    if (http_response_code > 0) {
+        // Serial.println("Heartbeat sent...");
+
+        String response = http.getString();
+        JsonDocument response_doc;
+        DeserializationError error = deserializeJson(response_doc, response);
+        if (!error) {
+            if (response_doc["result"].containsKey("should_update")) {
+                bool should_update = response_doc["result"]["should_update"];
+                role_manager.set_update_required(should_update);
+                Serial.println(role_manager.is_update_required());
+            } else {
+                Serial.print("deserializeJson() failed: ");
+                Serial.println(error.c_str());
+            }
+            // Serial.println(response);
+
+        } else {
+            // Print error message if the request failed
+            Serial.print("Error on HTTP request: ");
+            Serial.println(http_response_code);
+        }
+    }
+}
+
+void get_action_from_cloud() {
+    EspNowRoleManager& role_manager = EspNowRoleManager::get_instance();
+
+    const char* server_endpoint = "https://panel.xsarj.com/led/get_action";
+
+    // Serialize JSON document
+    JsonDocument doc;
+    doc["master_mac"] = WiFi.macAddress();
+
+    std::string json;
+    serializeJson(doc, json);
+
+    HTTPClient http;
+    // Send request
+    http.begin(server_endpoint);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Connection", "keep-alive");
+    http.addHeader("Accept-Encoding", "gzip, deflate, br");
+    http.addHeader("Accept", "*/*");
+    http.addHeader("User-Agent", "PostmanRuntime/7.26.8");
+    http.setConnectTimeout(5000);
+
+    int http_response_code = http.POST(json.c_str());
+    if (http_response_code > 0) {
+        // Serial.println("Getting action list...");
+
+        String response = http.getString();
+        JsonDocument response_doc;
+        DeserializationError error = deserializeJson(response_doc, response);
+        if (!error) {
+            bool is_pattern = response_doc["result"]["is_pattern"];
+            String slave_mac_list = response_doc["result"]["slave_mac_list"];
+            String display_text = response_doc["result"]["display_text"];
+            String pattern_animation = response_doc["result"]["pattern_animation"];
+            Serial.println(slave_mac_list);
+
+            // Extract and convert MAC addresses
+            std::vector<String> mac_addresses = split_string(slave_mac_list, ',');
+            std::vector<std::array<uint8_t, 6>> broadcastAddresses;
+
+            for (const String& mac : mac_addresses) {
+                std::array<uint8_t, 6> mac_array;
+                extract_mac(mac, mac_array);
+                broadcastAddresses.push_back(mac_array);
+            }
+
+            for (int i = 0; i < broadcastAddresses.size(); i++) {
+                Serial.print("broadcastAddress_");
+                Serial.print(i + 1);
+                Serial.print(": ");
+                for (int j = 0; j < 6; j++) {
+                    if (j > 0)
+                        Serial.print(":");
+                    Serial.printf("%02X", broadcastAddresses[i][j]);
+                }
+                Serial.println();
+            }
+
+            if (is_pattern)
+                message_to_send_master.flags.set(0);
+            else
+                message_to_send_master.flags.set(1);
+
+
+        } else {
+            // Print error message if the request failed
+            Serial.print("Error on HTTP request: ");
+            Serial.println(http_response_code);
+        }
+    }
 }

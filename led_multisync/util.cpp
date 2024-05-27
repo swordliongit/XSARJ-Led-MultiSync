@@ -59,103 +59,6 @@ void register_peers(UniqueQueue& slave_queue) {
 }
 
 
-bool connect_cloud() {
-    const char* server_endpoint = "https://panel.xsarj.com/led/subscribe_master";
-
-    // Serialize JSON document
-    JsonDocument doc;
-    doc["master_mac"] = WiFi.macAddress();
-    // doc["led_count"] = 4;
-
-    std::string json;
-    serializeJson(doc, json);
-
-    HTTPClient http;
-    // Send request
-    http.begin(server_endpoint);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("Connection", "keep-alive");
-    http.addHeader("Accept-Encoding", "gzip, deflate, br");
-    http.addHeader("Accept", "*/*");
-    http.addHeader("User-Agent", "PostmanRuntime/7.26.8");
-    http.setConnectTimeout(5000);
-
-    bool success = false;
-
-    int http_response_code = http.POST(json.c_str());
-    if (http_response_code > 0) {
-        String response = http.getString();
-        JsonDocument response_doc;
-        DeserializationError error = deserializeJson(response_doc, response);
-        if (!error) {
-            if (response_doc["result"].containsKey("status") && response_doc["result"]["status"] == "OK") {
-                success = true;
-            }
-        } else {
-            Serial.println(error.c_str());
-        }
-        Serial.println(response);
-
-    } else {
-        // Print error message if the request failed
-        Serial.print("Error on HTTP request: ");
-        Serial.println(http_response_code);
-    }
-    // Disconnect
-    http.end();
-
-    return success;
-}
-
-void send_heartbeat() {
-
-    EspNowRoleManager& role_manager = EspNowRoleManager::instance();
-
-    const char* server_endpoint = "https://panel.xsarj.com/led/heartbeat";
-
-    // Serialize JSON document
-    JsonDocument doc;
-    doc["master_mac"] = WiFi.macAddress();
-
-    std::string json;
-    serializeJson(doc, json);
-
-    HTTPClient http;
-    // Send request
-    http.begin(server_endpoint);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("Connection", "keep-alive");
-    http.addHeader("Accept-Encoding", "gzip, deflate, br");
-    http.addHeader("Accept", "*/*");
-    http.addHeader("User-Agent", "PostmanRuntime/7.26.8");
-    http.setConnectTimeout(5000);
-
-    int http_response_code = http.POST(json.c_str());
-    if (http_response_code > 0) {
-        Serial.println("Heartbeat sent...");
-
-        String response = http.getString();
-        JsonDocument response_doc;
-        DeserializationError error = deserializeJson(response_doc, response);
-        if (!error) {
-            if (response_doc["result"].containsKey("should_update")) {
-                bool should_update = response_doc["result"]["should_update"];
-                role_manager.set_update_required(should_update);
-                Serial.println(role_manager.is_update_required());
-            } else {
-                Serial.print("deserializeJson() failed: ");
-                Serial.println(error.c_str());
-            }
-            Serial.println(response);
-
-        } else {
-            // Print error message if the request failed
-            Serial.print("Error on HTTP request: ");
-            Serial.println(http_response_code);
-        }
-    }
-}
-
 int32_t getWiFiChannel(const char* ssid) {
     if (int32_t n = WiFi.scanNetworks()) {
         for (uint8_t i = 0; i < n; i++) {
@@ -360,5 +263,26 @@ void shift_matrix_right(std::vector<std::vector<int>>& grid) {
             grid[i][j] = grid[i][j - 1];
         }
         grid[i][0] = temp;
+    }
+}
+
+std::vector<String> split_string(const String& str, char delimiter) {
+    std::vector<String> result;
+    int start = 0;
+    int end = str.indexOf(delimiter);
+    while (end != -1) {
+        result.push_back(str.substring(start, end));
+        start = end + 1;
+        end = str.indexOf(delimiter, start);
+    }
+    result.push_back(str.substring(start));
+    return result;
+}
+
+
+void extract_mac(const String& mac_str, std::array<uint8_t, 6>& mac_array) {
+    std::vector<String> hex_strs = split_string(mac_str, ':');
+    for (int i = 0; i < 6; i++) {
+        mac_array[i] = (uint8_t)strtol(hex_strs[i].c_str(), NULL, 16);
     }
 }

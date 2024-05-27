@@ -10,6 +10,7 @@
 #include <bitset>
 #include <functional>
 #include <tuple>
+#include <array>
 
 #include "uqueue.hpp"
 #include "espnow_role_manager.hpp"
@@ -27,9 +28,6 @@ extern PatternAnimator p10;
 std::string serial2_get_data(const char* prefix, const char* suffix);
 
 void register_peers(UniqueQueue& slave_queue);
-
-bool connect_cloud();
-void send_heartbeat();
 
 template <typename Function, typename... Args>
 void run_every_seconds(const unsigned long Interval, Function func, Args... args) {
@@ -75,5 +73,9 @@ void shift_matrix_diagonal_decaying(std::vector<std::vector<int>>& grid);
 void shift_matrix_diagonal_decaying_upwards(std::vector<std::vector<int>>& grid);
 
 void shift_matrix_right(std::vector<std::vector<int>>& grid);
+
+std::vector<String> split_string(const String& str, char delimiter);
+
+void extract_mac(const String& mac_str, std::array<uint8_t, 6>& mac_array);
 
 #endif
