@@ -18,6 +18,8 @@ public:
     static std::vector<std::vector<int>> grid_turned_off;
     static std::vector<std::vector<int>> square;
     static std::vector<std::vector<int>> square_32;
+    static std::vector<std::vector<int>> grid_32;
+
 
     // 7x35
     static std::vector<std::vector<int>> xsarj;

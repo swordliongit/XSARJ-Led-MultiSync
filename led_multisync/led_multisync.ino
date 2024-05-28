@@ -233,7 +233,7 @@ void on_role_change(bool master, bool slave) {
         // Once ESPNow is successfully Init, we will register for Send CB to
         // get the status of Trasnmitted packet
         esp_now_register_send_cb(on_data_sent_master);
-        register_peers(slave_queue);
+
         if (connect_cloud()) {
             Serial.println("Master successfully subscribed to cloud");
             EspNowRoleManager::get_instance().set_cloud_connected();
@@ -435,7 +435,7 @@ void multianim_diagonal_shift() {
 }
 
 
-void multianim_diagonal_shift_fold() {
+void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid) {
     constexpr int ANIM_DELAY = 50;
     constexpr int SWITCH_DELAY = ANIM_DELAY * 4;
     constexpr size_t MAX_ROW = 32;
@@ -443,7 +443,16 @@ void multianim_diagonal_shift_fold() {
     bool fold = true;
     int shape_length = 4;
 
-    std::vector<std::vector<int>> grid = p10.square_32;
+    // std::vector<std::vector<int>> grid = p10.square_32;
+    // for (auto& row : grid) {
+    //     for (auto& el : row) {
+    //         Serial.print(el);
+    //     }
+    //     Serial.println();
+    // }
+    // Serial.println();
+    // Serial.println();
+
 
     // message_to_send_master.flags.set(0);
 
@@ -524,13 +533,24 @@ void multianim_diagonal_shift_fold() {
     }
 }
 
-void multianim_scrolling_marquee() {
+void multianim_scrolling_marquee(std::vector<String>& display_texts) {
     // message_to_send_master.flags.set(1); // marquee on
 
-    std::vector<const char*> bChars{"Adana", "Istanbul", "Bursa"};
+    // for (auto& el : display_texts) {
+    //     Serial.print(el + ", ");
+    // }
+    // Serial.println();
+
+
+    std::vector<const char*> bChars;
+    for (const auto& text : display_texts) {
+        bChars.push_back(text.c_str());
+    }
 
     // Animate Self
-    anim_drawMarquee("Antalya", static_cast<byte>(std::strlen("Antalya")));
+    const char* first = bChars[0];
+    anim_drawMarquee(first, static_cast<byte>(std::strlen(first)));
+    bChars.erase(bChars.begin());
 
     while (!slave_queue.empty()) {
         const char* current_bChar = bChars.front();
@@ -584,19 +604,28 @@ void loop(void) {
         }
 
         if (EspNowRoleManager::get_instance().is_update_required()) {
-            // Serial.println("Update Required...");
-            get_action_from_cloud();
+            Serial.println("[MASTER] -> Update signal received");
+
+            if (get_action_from_cloud()) {
+                Serial.println("[MASTER] -> Action received from cloud");
+                setup_action(slave_queue);
+            }
         }
     }
 
-
     // Perform action
-    if (EspNowRoleManager::get_instance().is_master()) {
-        // multianim_diagonal_shift_fold();
-        multianim_scrolling_marquee();
-        // multianim_diagonal_shift();
+    if (EspNowRoleManager::get_instance().is_action_set() && EspNowRoleManager::get_instance().is_master()) {
+        // Serial.println("Action set, animation starting...");
+        if (EspNowRoleManager::get_instance().is_pattern) {
+            // Serial.println("[It's pattern]");
+            multianim_diagonal_shift_fold(EspNowRoleManager::get_instance().pattern);
+            // multianim_diagonal_shift();
+        } else {
+            multianim_scrolling_marquee(EspNowRoleManager::get_instance().display_texts);
+        }
         delay(1);
-    } else if (EspNowRoleManager::get_instance().is_slave()) {
+    }
+    if (EspNowRoleManager::get_instance().is_slave()) {
         if (should_animate) {
             if (message_to_rcv_slave.flags.test(0)) {
                 p10.draw_pattern_static(reconstructedGrid, 4, 0);
@@ -604,6 +633,7 @@ void loop(void) {
                 // Serial.println(message_to_rcv.bChar);
                 anim_drawMarquee(message_to_rcv_slave.bChar, static_cast<byte>(std::strlen(message_to_rcv_slave.bChar)));
             }
+            should_animate = false;
         }
 
         delay(1);

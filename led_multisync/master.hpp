@@ -9,6 +9,7 @@
 #include <vector>
 #include <ArduinoJson.h>
 #include <array>
+#include <tuple>
 
 #include "espnow_role_manager.hpp"
 #include "util.hpp"
@@ -41,6 +42,6 @@ void on_data_sent_master(const uint8_t* mac_addr, esp_now_send_status_t status);
 void on_data_recv_master(const uint8_t* mac, const uint8_t* incomingData, int len);
 bool connect_cloud();
 void send_heartbeat();
-void get_action_from_cloud();
-
+bool get_action_from_cloud();
+void setup_action(UniqueQueue& slave_queue);
 #endif

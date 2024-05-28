@@ -5,6 +5,8 @@ Singleton Class
 */
 
 #include <functional>
+#include <array>
+#include <vector>
 
 
 class EspNowRoleManager {
@@ -14,13 +16,19 @@ private:
     bool _slave;
     bool _master_subscribed;
     bool _should_update;
-    bool update_required;
+    bool _is_action_set;
     EspNowRoleManager(std::function<void(bool, bool)>&& callback, bool master, bool slave) {
     }
     EspNowRoleManager(const EspNowRoleManager& role_manager) = delete;
     EspNowRoleManager& operator=(const EspNowRoleManager& role_manager) = delete;
 
 public:
+    bool is_pattern;
+    std::vector<std::array<uint8_t, 6>> broadcast_addresses;
+    std::vector<String> display_texts;
+    String pattern_animation;
+    std::vector<std::vector<int>> pattern;
+
     static EspNowRoleManager& get_instance() {
         static EspNowRoleManager instance(nullptr, false, false);
         return instance;
@@ -75,6 +83,14 @@ public:
 
     bool is_update_required() {
         return _should_update;
+    }
+
+    void set_action() {
+        _is_action_set = true;
+    }
+
+    bool is_action_set() {
+        return _is_action_set;
     }
 };
 

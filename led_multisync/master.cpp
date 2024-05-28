@@ -113,7 +113,7 @@ void send_heartbeat() {
             if (response_doc["result"].containsKey("should_update")) {
                 bool should_update = response_doc["result"]["should_update"];
                 role_manager.set_update_required(should_update);
-                Serial.println(role_manager.is_update_required());
+                // Serial.println(role_manager.is_update_required());
             } else {
                 Serial.print("deserializeJson() failed: ");
                 Serial.println(error.c_str());
@@ -128,8 +128,7 @@ void send_heartbeat() {
     }
 }
 
-void get_action_from_cloud() {
-    EspNowRoleManager& role_manager = EspNowRoleManager::get_instance();
+bool get_action_from_cloud() {
 
     const char* server_endpoint = "https://panel.xsarj.com/led/get_action";
 
@@ -162,40 +161,76 @@ void get_action_from_cloud() {
             String slave_mac_list = response_doc["result"]["slave_mac_list"];
             String display_text = response_doc["result"]["display_text"];
             String pattern_animation = response_doc["result"]["pattern_animation"];
-            Serial.println(slave_mac_list);
+            String pattern = response_doc["result"]["pattern"];
+            // Serial.println(slave_mac_list);
 
             // Extract and convert MAC addresses
             std::vector<String> mac_addresses = split_string(slave_mac_list, ',');
-            std::vector<std::array<uint8_t, 6>> broadcastAddresses;
+            std::vector<std::array<uint8_t, 6>> broadcast_addresses;
 
             for (const String& mac : mac_addresses) {
                 std::array<uint8_t, 6> mac_array;
                 extract_mac(mac, mac_array);
-                broadcastAddresses.push_back(mac_array);
+                broadcast_addresses.push_back(mac_array);
             }
 
-            for (int i = 0; i < broadcastAddresses.size(); i++) {
-                Serial.print("broadcastAddress_");
-                Serial.print(i + 1);
-                Serial.print(": ");
-                for (int j = 0; j < 6; j++) {
-                    if (j > 0)
-                        Serial.print(":");
-                    Serial.printf("%02X", broadcastAddresses[i][j]);
-                }
-                Serial.println();
-            }
 
-            if (is_pattern)
-                message_to_send_master.flags.set(0);
-            else
-                message_to_send_master.flags.set(1);
+            EspNowRoleManager& role_manager = EspNowRoleManager::get_instance();
+            role_manager.broadcast_addresses = broadcast_addresses;
+            role_manager.is_pattern = is_pattern;
+            role_manager.display_texts = split_string(display_text, ',');
+            role_manager.pattern_animation = pattern_animation;
+            // Serial.println(pattern);
+            role_manager.pattern = convertFromBitString(std::string(pattern.c_str()), p10.grid_32.size(), p10.grid_32[0].size());
+
+            return true;
 
 
         } else {
             // Print error message if the request failed
             Serial.print("Error on HTTP request: ");
             Serial.println(http_response_code);
+
+            return false;
         }
     }
+}
+
+
+void setup_action(UniqueQueue& slave_queue) {
+    EspNowRoleManager& role_manager = EspNowRoleManager::get_instance();
+
+    Serial.println("Setting up actions...");
+
+    if (role_manager.is_pattern)
+        message_to_send_master.flags.set(0);
+    else
+        message_to_send_master.flags.set(1);
+
+    // for (int i = 0; i < role_manager.broadcast_addresses.size(); i++) {
+    //     Serial.print("broadcastAddress_");
+    //     Serial.print(i + 1);
+    //     Serial.print(": ");
+    //     for (int j = 0; j < 6; j++) {
+    //         if (j > 0)
+    //             Serial.print(":");
+    //         Serial.printf("%02X", role_manager.broadcast_addresses[i][j]);
+    //     }
+    //     Serial.println();
+    // }
+    // Refresh the Queue
+    while (!slave_queue.empty()) {
+        slave_queue.pop();
+    }
+
+    for (size_t i = 0; i < role_manager.broadcast_addresses.size(); ++i) {
+        auto& addr = role_manager.broadcast_addresses[i];
+        slave_queue.push(std::make_tuple(addr.data(), i + 1));
+    }
+
+    register_peers(slave_queue);
+
+    role_manager.set_action(); // Action is set -> true
+    role_manager.set_update_required(false);
+    Serial.println("[MASTER] -> Action is set, ready");
 }

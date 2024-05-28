@@ -33,29 +33,25 @@ void register_peers(UniqueQueue& slave_queue) {
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
 
+    UniqueQueue proxy(false);
+
     // std::copy(mac, mac + 6, copied_mac);
     // std::tuple<uint8_t *, int> peer{copied_mac, message_to_rcv.order};
     // slave_queue.push(peer);
-
-    memcpy(peerInfo.peer_addr, broadcastAddress_1, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("Failed to add peer");
-        return;
+    while (!slave_queue.empty()) {
+        memcpy(peerInfo.peer_addr, std::get<0>(slave_queue.top()), 6);
+        if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+            Serial.println("Failed to add peer");
+            return;
+        }
+        proxy.push(slave_queue.top());
+        slave_queue.pop();
     }
-    memcpy(peerInfo.peer_addr, broadcastAddress_2, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("Failed to add peer");
-        return;
-    }
-    memcpy(peerInfo.peer_addr, broadcastAddress_3, 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("Failed to add peer");
-        return;
+    while (!proxy.empty()) {
+        slave_queue.push(proxy.top());
+        proxy.pop();
     }
     Serial.println("All peers registered successfully");
-    slave_queue.push(std::make_tuple(broadcastAddress_1, 1));
-    slave_queue.push(std::make_tuple(broadcastAddress_2, 2));
-    slave_queue.push(std::make_tuple(broadcastAddress_3, 3));
 }
 
 
