@@ -8,7 +8,8 @@ struct_message_to_receive_master message_to_rcv_master;
 struct_message_to_send_master message_to_send_master;
 
 void on_data_sent_master(const uint8_t* mac_addr, esp_now_send_status_t status) {
-    if (DEBUG) {
+    bool print = false;
+    if (print) {
         Serial.print("\r\nLast Packet Send Status:\t");
         Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
         char macStr[18];
@@ -162,7 +163,7 @@ bool get_action_from_cloud() {
             String display_text = response_doc["result"]["display_text"];
             String pattern_animation = response_doc["result"]["pattern_animation"];
             String pattern = response_doc["result"]["pattern"];
-            // Serial.println(slave_mac_list);
+            Serial.println(response);
 
             // Extract and convert MAC addresses
             std::vector<String> mac_addresses = split_string(slave_mac_list, ',');
@@ -183,6 +184,9 @@ bool get_action_from_cloud() {
             // Serial.println(pattern);
             role_manager.pattern = convertFromBitString(std::string(pattern.c_str()), p10.grid_32.size(), p10.grid_32[0].size());
 
+            // Serial.print("Broadcast addresses size: ");
+            // Serial.println(role_manager.broadcast_addresses.size());
+
             return true;
 
 
@@ -202,11 +206,15 @@ void setup_action(UniqueQueue& slave_queue) {
 
     Serial.println("Setting up actions...");
 
-    if (role_manager.is_pattern)
-        message_to_send_master.flags.set(0);
-    else
-        message_to_send_master.flags.set(1);
+    if (role_manager.is_pattern) {
+        message_to_send_master.flags.set(0, true);
+        message_to_send_master.flags.set(1, false);
+    } else {
+        message_to_send_master.flags.set(0, false);
+        message_to_send_master.flags.set(1, true);
+    }
 
+    // Serial.println("Addresses received from cloud: ");
     // for (int i = 0; i < role_manager.broadcast_addresses.size(); i++) {
     //     Serial.print("broadcastAddress_");
     //     Serial.print(i + 1);
@@ -220,22 +228,27 @@ void setup_action(UniqueQueue& slave_queue) {
     // }
     // Refresh the Queue
     // Unregister existing peers
-    while (!slave_queue.empty()) {
-        auto addr = std::get<0>(slave_queue.top());
-        if (esp_now_del_peer(addr) != ESP_OK) {
-            Serial.println("Failed to delete peer");
-        } else {
-            Serial.println("Peer deleted successfully");
-        }
-        slave_queue.pop();
-    }
+    // Serial.print("Queue size before: ");
+    // Serial.print(slave_queue.size());
+    // Serial.println();
+
+    unregister_all_peers(slave_queue);
+    Serial.println("Unregistered all peers and cleared the Queue");
+
+    // Serial.print("Queue size after clearing: ");
+    // Serial.print(slave_queue.size());
+    // Serial.println();
 
     for (size_t i = 0; i < role_manager.broadcast_addresses.size(); ++i) {
         auto& addr = role_manager.broadcast_addresses[i];
         slave_queue.push(std::make_tuple(addr.data(), i + 1));
     }
 
+    // Serial.print("Queue size after adding new addresses: ");
+    // Serial.println(slave_queue.size());
+
     register_peers(slave_queue);
+    Serial.println("Queue refreshed");
 
     role_manager.set_action(); // Action is set -> true
     role_manager.set_update_required(false);

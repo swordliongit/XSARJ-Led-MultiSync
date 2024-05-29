@@ -141,7 +141,7 @@ uint8_t broadcastAddress_1[6] = {0x48, 0xE7, 0x29, 0xB7, 0xE1, 0xCC};
 uint8_t broadcastAddress_2[6] = {0x78, 0x21, 0x84, 0xBB, 0x9F, 0x18};
 uint8_t broadcastAddress_3[6] = {0x40, 0x22, 0xD8, 0x6E, 0x7F, 0xCC};
 
-bool DEBUG = false;
+bool DEBUG = true;
 
 struct CompareOrder
 {
@@ -157,8 +157,7 @@ struct CompareOrder
     }
 };
 
-class UniqueQueue
-{
+class UniqueQueue {
     std::priority_queue<std::tuple<const uint8_t*, int>, std::vector<std::tuple<const uint8_t*, int>>, CompareOrder> pqueue{};
     std::set<std::tuple<const uint8_t*, int>> proxy{};
 

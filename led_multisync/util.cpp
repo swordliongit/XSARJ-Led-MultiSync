@@ -38,11 +38,24 @@ void register_peers(UniqueQueue& slave_queue) {
     // std::copy(mac, mac + 6, copied_mac);
     // std::tuple<uint8_t *, int> peer{copied_mac, message_to_rcv.order};
     // slave_queue.push(peer);
+    // Serial.print("Registering peers: ");
+    // Serial.println(slave_queue.size());
+
     while (!slave_queue.empty()) {
+        const uint8_t* addr = std::get<0>(slave_queue.top());
+        // Serial.print("Registering peer: ");
+        for (int i = 0; i < 6; i++) {
+            if (i > 0)
+                Serial.print(":");
+            Serial.printf("%02X", addr[i]);
+        }
+        Serial.println();
+
         memcpy(peerInfo.peer_addr, std::get<0>(slave_queue.top()), 6);
-        if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-            Serial.println("Failed to add peer");
-            return;
+        esp_err_t add_peer_result = esp_now_add_peer(&peerInfo);
+        if (add_peer_result != ESP_OK) {
+            Serial.print("Failed to add peer, error: ");
+            Serial.println(add_peer_result);
         }
         proxy.push(slave_queue.top());
         slave_queue.pop();
@@ -52,6 +65,21 @@ void register_peers(UniqueQueue& slave_queue) {
         proxy.pop();
     }
     Serial.println("All peers registered successfully");
+}
+
+void unregister_all_peers(UniqueQueue& slave_queue) {
+    while (!slave_queue.empty()) {
+        const uint8_t* addr = std::get<0>(slave_queue.top());
+        if (esp_now_is_peer_exist(addr)) {
+            Serial.println("Peer exists");
+            if (esp_now_del_peer(addr) != ESP_OK) {
+                Serial.println("Failed to delete peer");
+            } else {
+                Serial.println("Peer deleted successfully");
+            }
+        }
+        slave_queue.pop();
+    }
 }
 
 

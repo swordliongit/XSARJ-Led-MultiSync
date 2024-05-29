@@ -28,6 +28,7 @@ extern PatternAnimator p10;
 std::string serial2_get_data(const char* prefix, const char* suffix);
 
 void register_peers(UniqueQueue& slave_queue);
+void unregister_all_peers(UniqueQueue& slave_queue);
 
 template <typename Function, typename... Args>
 void run_every_seconds(const unsigned long Interval, Function func, Args... args) {

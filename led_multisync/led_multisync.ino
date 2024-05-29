@@ -309,6 +309,7 @@ void setup(void) {
     dmd.clearScreen(true); // true is normal (all pixels off), false is negative (all pixels on)
 
     Serial.println("Screen Started");
+    Serial.println("Waiting for Role command...");
 }
 
 
@@ -531,15 +532,22 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid) {
         shift_matrix_diagonal_decaying_upwards(grid);
         delay(ANIM_DELAY);
     }
+
+
+    // Fill the queue back again
+    while (!proxy_queue.empty()) {
+        slave_queue.push(proxy_queue.top());
+        proxy_queue.pop();
+    }
 }
 
 void multianim_scrolling_marquee(std::vector<String>& display_texts) {
     // message_to_send_master.flags.set(1); // marquee on
 
-    // for (auto& el : display_texts) {
-    //     Serial.print(el + ", ");
-    // }
-    // Serial.println();
+    for (auto& el : display_texts) {
+        Serial.print(el + ", ");
+    }
+    Serial.println();
 
 
     std::vector<const char*> bChars;
@@ -583,17 +591,19 @@ void loop(void) {
 
     byte b;
     // 10 x 14 font clock, including demo of OR and NOR modes for pixels so that the flashing colon can be overlayed
-    dmd.clearScreen(true);
+    // dmd.clearScreen(true);
     dmd.selectFont(System5x7);
 
     // Get Role from the parent Esp32
     auto cmd = serial2_get_data("ms_", "!");
-    if (cmd == "0") {
-        Serial.println(cmd.c_str());
-        EspNowRoleManager::get_instance().set_slave();
-    } else if (cmd == "1") {
-        Serial.println(cmd.c_str());
+    // auto cmd = "0";
+    if (cmd == "1") {
+        // Serial.println(cmd.c_str());
         EspNowRoleManager::get_instance().set_master();
+        // Serial.println("You are the MASTER");
+    } else if (cmd == "0") {
+        EspNowRoleManager::get_instance().set_slave();
+        // Serial.println("You are a SLAVE");
     }
 
     // Master specific block
@@ -623,6 +633,7 @@ void loop(void) {
         } else {
             multianim_scrolling_marquee(EspNowRoleManager::get_instance().display_texts);
         }
+
         delay(1);
     }
     if (EspNowRoleManager::get_instance().is_slave()) {
