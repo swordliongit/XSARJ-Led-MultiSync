@@ -313,15 +313,20 @@ void setup(void) {
 }
 
 
-void multianim_horizontal_shift() {
+void multianim_horizontal_shift(std::vector<std::vector<int>> grid) {
     constexpr int ANIM_DELAY = 20; // 20
     constexpr int SWITCH_DELAY = ANIM_DELAY * 4;
     bool flip = false;
 
     // message_to_send_master.flags.set(0);
+    std::vector<std::vector<int>> working_grid;
+    auto end_iterator = grid.begin() + 8;
+    for (auto it = grid.begin(); it != end_iterator; ++it) {
+        working_grid.push_back(*it);
+    }
 
     // Animate Self
-    std::vector<std::vector<int>> temp = p10.grid;
+    std::vector<std::vector<int>> temp = working_grid;
     p10.draw_pattern_static(temp, 4, 0);
     delay(ANIM_DELAY);
     for (int i = 0; i < 7; i++) {
@@ -334,7 +339,7 @@ void multianim_horizontal_shift() {
 
     // Animate Slaves
     while (!slave_queue.empty()) {
-        std::vector<std::vector<int>> temp = p10.grid;
+        std::vector<std::vector<int>> temp = working_grid;
 
         prepare_next_matrix(temp);
         esp_err_t result = esp_now_send(std::get<0>(slave_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
@@ -356,7 +361,7 @@ void multianim_horizontal_shift() {
         delay(SWITCH_DELAY);
     }
     delay(SWITCH_DELAY * 2);
-    temp = p10.grid;
+    temp = working_grid;
     prepare_and_shift_next_matrix(temp, shift_matrix_up); // 000....1 , last column on
     while (!proxy_queue.empty()) {
         esp_err_t result = esp_now_send(std::get<0>(proxy_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
@@ -544,10 +549,10 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid) {
 void multianim_scrolling_marquee(std::vector<String>& display_texts) {
     // message_to_send_master.flags.set(1); // marquee on
 
-    for (auto& el : display_texts) {
-        Serial.print(el + ", ");
-    }
-    Serial.println();
+    // for (auto& el : display_texts) {
+    //     Serial.print(el + ", ");
+    // }
+    // Serial.println();
 
 
     std::vector<const char*> bChars;
@@ -624,12 +629,18 @@ void loop(void) {
     }
 
     // Perform action
-    if (EspNowRoleManager::get_instance().is_action_set() && EspNowRoleManager::get_instance().is_master()) {
+    if (EspNowRoleManager::get_instance().is_master() && EspNowRoleManager::get_instance().is_action_set()) {
         // Serial.println("Action set, animation starting...");
         if (EspNowRoleManager::get_instance().is_pattern) {
             // Serial.println("[It's pattern]");
-            multianim_diagonal_shift_fold(EspNowRoleManager::get_instance().pattern);
-            // multianim_diagonal_shift();
+            // Animation Selection
+            // Serial.print("Anim in check: ");
+            // Serial.print(EspNowRoleManager::get_instance().pattern_animation);
+            if (EspNowRoleManager::get_instance().pattern_animation == "h_scroll") {
+                multianim_horizontal_shift(EspNowRoleManager::get_instance().pattern);
+            } else if (EspNowRoleManager::get_instance().pattern_animation == "d_scroll_fold") {
+                multianim_diagonal_shift_fold(EspNowRoleManager::get_instance().pattern);
+            }
         } else {
             multianim_scrolling_marquee(EspNowRoleManager::get_instance().display_texts);
         }

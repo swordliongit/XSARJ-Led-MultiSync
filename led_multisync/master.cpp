@@ -181,7 +181,8 @@ bool get_action_from_cloud() {
             role_manager.is_pattern = is_pattern;
             role_manager.display_texts = split_string(display_text, ',');
             role_manager.pattern_animation = pattern_animation;
-            // Serial.println(pattern);
+            Serial.println(pattern_animation);
+            Serial.println(role_manager.pattern_animation);
             role_manager.pattern = convertFromBitString(std::string(pattern.c_str()), p10.grid_32.size(), p10.grid_32[0].size());
 
             // Serial.print("Broadcast addresses size: ");
