@@ -219,7 +219,14 @@ void setup_action(UniqueQueue& slave_queue) {
     //     Serial.println();
     // }
     // Refresh the Queue
+    // Unregister existing peers
     while (!slave_queue.empty()) {
+        auto addr = std::get<0>(slave_queue.top());
+        if (esp_now_del_peer(addr) != ESP_OK) {
+            Serial.println("Failed to delete peer");
+        } else {
+            Serial.println("Peer deleted successfully");
+        }
         slave_queue.pop();
     }
 
