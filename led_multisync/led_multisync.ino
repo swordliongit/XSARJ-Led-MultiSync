@@ -36,41 +36,39 @@
 /*--------------------------------------------------------------------------------------
   Includes
   --------------------------------------------------------------------------------------*/
-#include "esp_system.h"
-#include <DMD32.h> //
-#include "fonts/SystemFont5x7.h"
-#include "fonts/Arial_black_16.h"
-#include "fonts/Arial14.h"
+#include <Arduino.h>
+#include <DMD32.h>
+#include <EEPROM.h>
+#include <HTTPClient.h>
+#include <Update.h>
+#include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 
+#include <bitset>
+#include <cmath>
+#include <cstring>
 #include <iostream>
-#include <vector> // for vector
 #include <limits> // for numeric_limits
+#include <queue>
+#include <random>
+#include <set>
+#include <string>
 #include <thread>
 #include <tuple>
+#include <vector> // for vector
 
-#include <Arduino.h>
-#include <WiFi.h>
-#include <EEPROM.h>
-#include <Update.h>
-#include <HTTPClient.h>
-
-#include <esp_now.h>
-#include <queue>
-#include <set>
-#include <tuple>
-#include <string>
-#include <esp_wifi.h>
-#include <bitset>
-#include <cstring>
-
-#include "pattern_animator.hpp"
 #include "charge_animations.hpp"
-#include "master.hpp"
-#include "slave.hpp"
-#include "uqueue.hpp"
+#include "esp_system.h"
 #include "espnow_role_manager.hpp"
-#include <random>
-#include <cmath>
+#include "fonts/Arial14.h"
+#include "fonts/Arial_black_16.h"
+#include "fonts/SystemFont5x7.h"
+#include "master.hpp"
+#include "pattern_animator.hpp"
+#include "slave.hpp"
+#include "strtovector_converter.hpp"
+#include "uqueue.hpp"
 
 #define DISPLAYS_ACROSS 2
 #define DISPLAYS_DOWN 1
@@ -151,15 +149,9 @@ uint8_t copied_mac[6];
 
 // EspNowRoleManager role_manager(on_role_change, false, false);
 
-enum class Animation
-{
-    ANIM1,
-    ANIM2,
-    ANIM3
-};
+enum class Animation { ANIM1, ANIM2, ANIM3 };
 
-enum class Flags : unsigned int
-{
+enum class Flags : unsigned int {
     None = 0,
     Init = 1 << 0,  // 0001
     Shift = 1 << 1, // 0010
@@ -172,8 +164,8 @@ std::vector<std::vector<int>> self_anim_part;
 // callback function that will be executed when data is received
 
 /*--------------------------------------------------------------------------------------
-  Interrupt handler for Timer1 (TimerOne) driven DMD refresh scanning, this gets
-  called at the period set in Timer1.initialize();
+  Interrupt handler for Timer1 (TimerOne) driven DMD refresh scanning, this
+  gets called at the period set in Timer1.initialize();
   --------------------------------------------------------------------------------------*/
 // volatile bool scanFlag = false;
 QueueHandle_t scanQueue;
@@ -189,10 +181,8 @@ void IRAM_ATTR triggerScan()
 void scanTask(void* parameter)
 {
     uint8_t dummy;
-    for (;;)
-    {
-        if (xQueueReceive(scanQueue, &dummy, portMAX_DELAY))
-        {
+    for (;;) {
+        if (xQueueReceive(scanQueue, &dummy, portMAX_DELAY)) {
             dmd.scanDisplayBySPI();
         }
     }
@@ -204,10 +194,8 @@ void anim_drawMarquee(const char* bChars, byte length)
     long start = millis();
     long timer = start;
     boolean ret = false;
-    while (!ret)
-    {
-        if ((timer + 21) < millis())
-        {
+    while (!ret) {
+        if ((timer + 21) < millis()) {
             ret = dmd.stepMarquee(-1, 0);
             timer = millis();
         }
@@ -216,15 +204,13 @@ void anim_drawMarquee(const char* bChars, byte length)
 
 void on_role_change(bool master, bool slave)
 {
-    if (master)
-    {
+    if (master) {
         // ESP-NOW and WiFi working simultaneously
         // Set device as a Wi-Fi Station
         WiFi.mode(WIFI_AP_STA);
         WiFi.begin(ssid, password);
         // //check wi-fi is connected to wi-fi network
-        while (WiFi.status() != WL_CONNECTED)
-        {
+        while (WiFi.status() != WL_CONNECTED) {
             delay(1000);
             Serial.print(".");
         }
@@ -234,8 +220,7 @@ void on_role_change(bool master, bool slave)
         Serial.println(WiFi.channel());
         Serial.println(WiFi.macAddress());
         // Init ESP-NOW
-        if (esp_now_init() != ESP_OK)
-        {
+        if (esp_now_init() != ESP_OK) {
             Serial.println("Error initializing ESP-NOW");
             return;
         }
@@ -247,14 +232,12 @@ void on_role_change(bool master, bool slave)
         // get the status of Trasnmitted packet
         esp_now_register_send_cb(on_data_sent_master);
 
-        if (connect_cloud())
-        {
+        if (connect_cloud()) {
             Serial.println("Master successfully subscribed to cloud");
             EspNowRoleManager::get_instance().set_cloud_connected();
         }
     }
-    else if (slave)
-    {
+    else if (slave) {
         // Set device as a Wi-Fi Station
         WiFi.mode(WIFI_STA);
 
@@ -268,8 +251,7 @@ void on_role_change(bool master, bool slave)
         WiFi.printDiag(Serial); // Uncomment to verify channel change after
 
         // Init ESP-NOW
-        if (esp_now_init() != ESP_OK)
-        {
+        if (esp_now_init() != ESP_OK) {
             Serial.println("Error initializing ESP-NOW");
             return;
         }
@@ -287,8 +269,7 @@ void on_role_change(bool master, bool slave)
 
         uint8_t broadcastAddress[6] = {0xB0, 0xA7, 0x32, 0xDB, 0xC5, 0x3C};
         memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-        if (esp_now_add_peer(&peerInfo) != ESP_OK)
-        {
+        if (esp_now_add_peer(&peerInfo) != ESP_OK) {
             Serial.println("Failed to add peer");
             return;
         }
@@ -342,8 +323,7 @@ void multianim_horizontal_shift(std::vector<std::vector<int>> grid)
     // message_to_send_master.flags.set(0);
     std::vector<std::vector<int>> working_grid;
     auto end_iterator = grid.begin() + 8;
-    for (auto it = grid.begin(); it != end_iterator; ++it)
-    {
+    for (auto it = grid.begin(); it != end_iterator; ++it) {
         working_grid.push_back(*it);
     }
 
@@ -351,8 +331,7 @@ void multianim_horizontal_shift(std::vector<std::vector<int>> grid)
     std::vector<std::vector<int>> temp = working_grid;
     p10.draw_pattern_static(temp, 4, 0);
     delay(ANIM_DELAY);
-    for (int i = 0; i < 7; i++)
-    {
+    for (int i = 0; i < 7; i++) {
         shift_matrix_down(temp);
         p10.draw_pattern_static(temp, 4, 0);
         delay(ANIM_DELAY);
@@ -361,16 +340,14 @@ void multianim_horizontal_shift(std::vector<std::vector<int>> grid)
     delay(SWITCH_DELAY);
 
     // Animate Slaves
-    while (!slave_queue.empty())
-    {
+    while (!slave_queue.empty()) {
         std::vector<std::vector<int>> temp = working_grid;
 
         prepare_next_matrix(temp);
         esp_err_t result = esp_now_send(std::get<0>(slave_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
         delay(ANIM_DELAY);
 
-        for (int i = 0; i < 7; i++)
-        {
+        for (int i = 0; i < 7; i++) {
             prepare_and_shift_next_matrix(temp, shift_matrix_down);
             result = esp_now_send(std::get<0>(slave_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
             // delete[] message_to_send.bitString;
@@ -389,13 +366,11 @@ void multianim_horizontal_shift(std::vector<std::vector<int>> grid)
     temp = working_grid;
     prepare_and_shift_next_matrix(temp,
                                   shift_matrix_up); // 000....1 , last column on
-    while (!proxy_queue.empty())
-    {
+    while (!proxy_queue.empty()) {
         esp_err_t result = esp_now_send(std::get<0>(proxy_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
         delay(ANIM_DELAY);
 
-        for (int i = 0; i < 7; i++)
-        {
+        for (int i = 0; i < 7; i++) {
             prepare_and_shift_next_matrix(temp, shift_matrix_up);
             result = esp_now_send(std::get<0>(proxy_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
             delay(ANIM_DELAY);
@@ -407,14 +382,14 @@ void multianim_horizontal_shift(std::vector<std::vector<int>> grid)
         slave_queue.push(proxy_queue.top());
         proxy_queue.pop();
 
-        prepare_and_shift_next_matrix(temp, shift_matrix_up); // 000....1 , last column on
+        prepare_and_shift_next_matrix(temp,
+                                      shift_matrix_up); // 000....1 , last column on
         delay(SWITCH_DELAY);
     }
     // Animate Self
     p10.draw_pattern_static(temp, 4, 0);
     delay(ANIM_DELAY);
-    for (int i = 0; i < 7; i++)
-    {
+    for (int i = 0; i < 7; i++) {
         shift_matrix_up(temp);
         p10.draw_pattern_static(temp, 4, 0);
         delay(ANIM_DELAY);
@@ -423,8 +398,7 @@ void multianim_horizontal_shift(std::vector<std::vector<int>> grid)
     delay(SWITCH_DELAY * 2);
 }
 
-class WavePattern
-{
+class WavePattern {
   private:
     int verticalOffset;
     double horizontalOffset;
@@ -447,8 +421,7 @@ class WavePattern
     void updatePattern()
     {
         // Clear the pattern
-        for (auto& row : pattern)
-        {
+        for (auto& row : pattern) {
             std::fill(row.begin(), row.end(), 0);
         }
 
@@ -456,8 +429,7 @@ class WavePattern
         double baseAmplitude = WIDTH / 8.0; // Reduced amplitude for shorter wave tops
         double frequencyMod = 1.0 + 0.1 * std::sin(time * 0.1);
 
-        for (int y = 0; y < HEIGHT; ++y)
-        {
+        for (int y = 0; y < HEIGHT; ++y) {
             // Vary amplitude over time and add some randomness
             double amplitude = baseAmplitude * (1 + 0.2 * std::sin(time * 0.05)) + dist(rng);
 
@@ -468,14 +440,12 @@ class WavePattern
             double x = (wave * amplitude) + (WIDTH * 0.6); // Moved base position more to the left
 
             // Apply horizontal offset if enabled
-            if (horizontalShiftEnabled)
-            {
+            if (horizontalShiftEnabled) {
                 x += horizontalOffset;
             }
 
             // Only draw the wave if it's within the grid
-            if (x >= 0 && x < WIDTH)
-            {
+            if (x >= 0 && x < WIDTH) {
                 int xInt = static_cast<int>(x);
                 pattern[y][xInt] = 1;
                 if (xInt > 0)
@@ -496,16 +466,14 @@ class WavePattern
 
     void moveWaveHorizontal()
     {
-        if (horizontalShiftEnabled)
-        {
+        if (horizontalShiftEnabled) {
             double minShift = WIDTH * 0.3; // 30% of width as minimum (more to the left)
             double maxShift = WIDTH * 0.8; // 80% of width as maximum
             double shiftRange = maxShift - minShift;
 
             horizontalShiftExtent += 0.2 * horizontalShiftDirection; // Increased speed
 
-            if (horizontalShiftExtent > shiftRange || horizontalShiftExtent < 0)
-            {
+            if (horizontalShiftExtent > shiftRange || horizontalShiftExtent < 0) {
                 horizontalShiftDirection *= -1; // Reverse direction
                 horizontalShiftExtent = std::max(0.0, std::min(horizontalShiftExtent, shiftRange));
             }
@@ -545,13 +513,11 @@ void multianim_wave_pattern()
     // std::vector<std::vector<int>> grid = waveWithShift.pattern;
 
     // Animation loop
-    for (int i = 0; i < 1000; ++i)
-    {
+    for (int i = 0; i < 1000; ++i) {
         // Animate Self
         std::vector<std::vector<int>> self_anim_part;
         auto end_iterator = waveWithShift.pattern.begin() + 8;
-        for (auto it = waveWithShift.pattern.begin(); it != end_iterator; ++it)
-        {
+        for (auto it = waveWithShift.pattern.begin(); it != end_iterator; ++it) {
             self_anim_part.push_back(*it);
         }
 
@@ -559,12 +525,10 @@ void multianim_wave_pattern()
 
         int count = 2;
 
-        while (!slave_queue.empty())
-        {
+        while (!slave_queue.empty()) {
             std::vector<std::vector<int>> slave_anim_part;
             auto end_iterator = waveWithShift.pattern.begin() + (8 * count);
-            for (auto it = waveWithShift.pattern.begin() + (8 * (count - 1)); it != end_iterator; ++it)
-            {
+            for (auto it = waveWithShift.pattern.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
                 slave_anim_part.push_back(*it);
             }
             prepare_next_matrix(slave_anim_part);
@@ -576,8 +540,7 @@ void multianim_wave_pattern()
             proxy_queue.push(slave_queue.top());
             slave_queue.pop();
         }
-        while (!proxy_queue.empty())
-        {
+        while (!proxy_queue.empty()) {
             slave_queue.push(proxy_queue.top());
             proxy_queue.pop();
         }
@@ -597,15 +560,12 @@ void multianim_wave_pattern()
 // Function to add a battery fill to the grid
 void addBatteryFill(std::vector<std::vector<int>>& grid, int startCol, int width = 3, int height = 8)
 {
-    if (startCol + width > grid[0].size())
-    {
+    if (startCol + width > grid[0].size()) {
         throw std::out_of_range("Battery fill exceeds grid width");
     }
 
-    for (int row = 0; row < height && row < grid.size(); ++row)
-    {
-        for (int col = startCol; col < startCol + width; ++col)
-        {
+    for (int row = 0; row < height && row < grid.size(); ++row) {
+        for (int col = startCol; col < startCol + width; ++col) {
             grid[row][col] = 1;
         }
     }
@@ -621,25 +581,23 @@ void multianim_battery()
     const int WIDTH = 64;
 
     std::vector<std::vector<int>> blink(HEIGHT, std::vector<int>(WIDTH, 0));
-    std::vector<std::vector<int>> battery = Battery;
-    // std::vector<std::vector<int>> tempBattery(HEIGHT, std::vector<int>(WIDTH, 0));
+    std::vector<std::vector<int>> battery = p10.Battery;
+    // std::vector<std::vector<int>> tempBattery(HEIGHT, std::vector<int>(WIDTH,
+    // 0));
 
-    for (size_t i = 0; i <= MAX_BATTERY; ++i)
-    {
+    for (size_t i = 0; i <= MAX_BATTERY; ++i) {
         // Animate Self
 
         // Show - Blink - Show - Blink - Show - Blink,
         // Blink - Show - Blink - Show - Blink - Show
         // Then we increment Battery
-        for (int i = 0; i < BLINK_COUNT; ++i)
-        {
+        for (int i = 0; i < BLINK_COUNT; ++i) {
             p10.draw_pattern_static(self_anim_part, 4, 0);
             int count = 2;
             // std::cout << "Queue Size: " << slave_queue.size() << "\n";
 
             // Animate Slaves
-            while (!slave_queue.empty())
-            {
+            while (!slave_queue.empty()) {
                 prepare_next_matrix(blink);
 
                 ++count;
@@ -649,8 +607,7 @@ void multianim_battery()
                 proxy_queue.push(slave_queue.top());
                 slave_queue.pop();
             }
-            while (!proxy_queue.empty())
-            {
+            while (!proxy_queue.empty()) {
                 slave_queue.push(proxy_queue.top());
                 proxy_queue.pop();
             }
@@ -663,8 +620,7 @@ void multianim_battery()
             count = 2;
 
             // Animate Slaves
-            while (!slave_queue.empty())
-            {
+            while (!slave_queue.empty()) {
                 prepare_next_matrix(battery);
 
                 ++count;
@@ -674,8 +630,7 @@ void multianim_battery()
                 proxy_queue.push(slave_queue.top());
                 slave_queue.pop();
             }
-            while (!proxy_queue.empty())
-            {
+            while (!proxy_queue.empty()) {
                 slave_queue.push(proxy_queue.top());
                 proxy_queue.pop();
             }
@@ -684,9 +639,11 @@ void multianim_battery()
         }
         // TRIPLE BLINK ENDED
         // TIME TO SHIFT THE BATTERY SIDEWAYS
-        if (i < MAX_BATTERY) // IF we are on the last fill, we have to exit, to avoid going out of grid
+        if (i < MAX_BATTERY) // IF we are on the last fill, we have to exit, to
+                             // avoid going out of grid
         {
-            blink = battery; // will be used to act as a blinker for the next incremented battery
+            blink = battery; // will be used to act as a blinker for the next
+                             // incremented battery
             addBatteryFill(battery, 6 + (i * 5));
         }
     }
@@ -705,24 +662,20 @@ void multianim_diagonal_shift(std::vector<std::vector<int>> grid)
     // delay(1);
     // message_to_send_master.flags.set(0);
 
-    for (size_t i = 0; i < MAX_ROW; i++)
-    {
+    for (size_t i = 0; i < MAX_ROW; i++) {
         std::vector<std::vector<int>> self_anim_part;
         auto end_iterator = grid.begin() + 8;
-        for (auto it = grid.begin(); it != end_iterator; ++it)
-        {
+        for (auto it = grid.begin(); it != end_iterator; ++it) {
             self_anim_part.push_back(*it);
         }
         p10.draw_pattern_static(self_anim_part, 4, 0);
         // delay(ANIM_DELAY);
         int count = 2;
         // Serial.println(slave_queue.size());
-        while (!slave_queue.empty())
-        {
+        while (!slave_queue.empty()) {
             std::vector<std::vector<int>> slave_anim_part;
             auto end_iterator = grid.begin() + (8 * count);
-            for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it)
-            {
+            for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
                 slave_anim_part.push_back(*it);
             }
             prepare_next_matrix(slave_anim_part);
@@ -734,8 +687,7 @@ void multianim_diagonal_shift(std::vector<std::vector<int>> grid)
             proxy_queue.push(slave_queue.top());
             slave_queue.pop();
         }
-        while (!proxy_queue.empty())
-        {
+        while (!proxy_queue.empty()) {
             slave_queue.push(proxy_queue.top());
             proxy_queue.pop();
         }
@@ -766,13 +718,11 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
 
     // message_to_send_master.flags.set(0);
 
-    for (size_t i = 0; i < MAX_ROW - shape_length; ++i)
-    {
+    for (size_t i = 0; i < MAX_ROW - shape_length; ++i) {
         // Animate Self
         std::vector<std::vector<int>> self_anim_part;
         auto end_iterator = grid.begin() + 8;
-        for (auto it = grid.begin(); it != end_iterator; ++it)
-        {
+        for (auto it = grid.begin(); it != end_iterator; ++it) {
             self_anim_part.push_back(*it);
         }
         p10.draw_pattern_static(self_anim_part, 4, 0);
@@ -780,12 +730,10 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
         // std::cout << "Queue Size: " << slave_queue.size() << "\n";
 
         // Animate Slaves
-        while (!slave_queue.empty())
-        {
+        while (!slave_queue.empty()) {
             std::vector<std::vector<int>> slave_anim_part;
             auto end_iterator = grid.begin() + (8 * count);
-            for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it)
-            {
+            for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
                 slave_anim_part.push_back(*it);
             }
             prepare_next_matrix(slave_anim_part);
@@ -797,8 +745,7 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
             proxy_queue.push(slave_queue.top());
             slave_queue.pop();
         }
-        while (!proxy_queue.empty())
-        {
+        while (!proxy_queue.empty()) {
             slave_queue.push(proxy_queue.top());
             proxy_queue.pop();
         }
@@ -806,8 +753,7 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
         delay(ANIM_DELAY);
     }
 
-    while (!slave_queue.empty())
-    {
+    while (!slave_queue.empty()) {
         proxy_queue.push(slave_queue.top());
         slave_queue.pop();
     }
@@ -815,15 +761,12 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
     delay(ANIM_DELAY);
 
     // Fold to reverse direction
-    for (size_t i = 0; i < MAX_ROW + 1; ++i)
-    {
+    for (size_t i = 0; i < MAX_ROW + 1; ++i) {
         int count = 4;
-        while (!proxy_queue.empty())
-        {
+        while (!proxy_queue.empty()) {
             std::vector<std::vector<int>> slave_anim_part;
             auto end_iterator = grid.begin() + (8 * count);
-            for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it)
-            {
+            for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
                 slave_anim_part.push_back(*it);
             }
             prepare_next_matrix(slave_anim_part);
@@ -835,16 +778,14 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
             slave_queue.push(proxy_queue.top());
             proxy_queue.pop();
         }
-        while (!slave_queue.empty())
-        {
+        while (!slave_queue.empty()) {
             proxy_queue.push(slave_queue.top());
             slave_queue.pop();
         }
         // Animate Self
         std::vector<std::vector<int>> self_anim_part;
         auto end_iterator = grid.begin() + 8;
-        for (auto it = grid.begin(); it != end_iterator; ++it)
-        {
+        for (auto it = grid.begin(); it != end_iterator; ++it) {
             self_anim_part.push_back(*it);
         }
         p10.draw_pattern_static(self_anim_part, 4, 0);
@@ -854,8 +795,7 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
     }
 
     // Fill the queue back again
-    while (!proxy_queue.empty())
-    {
+    while (!proxy_queue.empty()) {
         slave_queue.push(proxy_queue.top());
         proxy_queue.pop();
     }
@@ -900,7 +840,8 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
 //                 {
 //                     std::vector<std::vector<int>> slave_anim_part;
 //                     auto end_iterator = grid.begin() + (8 * count);
-//                     for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it)
+//                     for (auto it = grid.begin() + (8 * (count - 1)); it !=
+//                     end_iterator; ++it)
 //                         {
 //                             slave_anim_part.push_back(*it);
 //                         }
@@ -909,7 +850,9 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
 //                     ++count;
 
 //                     esp_err_t result
-//                       = esp_now_send(std::get<0>(slave_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
+//                       = esp_now_send(std::get<0>(slave_queue.top()),
+//                       (uint8_t*)&message_to_send_master,
+//                       sizeof(message_to_send_master));
 
 //                     proxy_queue.push(slave_queue.top());
 //                     slave_queue.pop();
@@ -939,7 +882,8 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
 //                 {
 //                     std::vector<std::vector<int>> slave_anim_part;
 //                     auto end_iterator = grid.begin() + (8 * count);
-//                     for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it)
+//                     for (auto it = grid.begin() + (8 * (count - 1)); it !=
+//                     end_iterator; ++it)
 //                         {
 //                             slave_anim_part.push_back(*it);
 //                         }
@@ -948,7 +892,9 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
 //                     --count;
 
 //                     esp_err_t result
-//                       = esp_now_send(std::get<0>(proxy_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
+//                       = esp_now_send(std::get<0>(proxy_queue.top()),
+//                       (uint8_t*)&message_to_send_master,
+//                       sizeof(message_to_send_master));
 
 //                     slave_queue.push(proxy_queue.top());
 //                     proxy_queue.pop();
@@ -989,8 +935,7 @@ void multianim_scrolling_marquee(std::vector<String>& display_texts)
     // Serial.println();
 
     std::vector<const char*> bChars;
-    for (const auto& text : display_texts)
-    {
+    for (const auto& text : display_texts) {
         bChars.push_back(text.c_str());
     }
 
@@ -999,14 +944,12 @@ void multianim_scrolling_marquee(std::vector<String>& display_texts)
     anim_drawMarquee(first, static_cast<byte>(std::strlen(first)));
     bChars.erase(bChars.begin());
 
-    while (!slave_queue.empty())
-    {
+    while (!slave_queue.empty()) {
         const char* current_bChar = bChars.front();
         strcpy(message_to_send_master.bChar, current_bChar);
         bChars.erase(bChars.begin());
 
-        if (DEBUG)
-        {
+        if (DEBUG) {
             Serial.println(message_to_send_master.bChar);
         }
 
@@ -1015,17 +958,51 @@ void multianim_scrolling_marquee(std::vector<String>& display_texts)
         proxy_queue.push(slave_queue.top());
         slave_queue.pop();
     }
-    while (!proxy_queue.empty())
-    {
+    while (!proxy_queue.empty()) {
         slave_queue.push(proxy_queue.top());
         proxy_queue.pop();
     }
 }
 
+void multianim_text_shift(const char* text)
+{
+    // For the maximum 64x64 grid
+    auto grid64x64 = stringToLEDGrid(text, std ::strlen(text), 0, 0, 64);
+}
 /*--------------------------------------------------------------------------------------
   loop
   Arduino architecture main loop
   --------------------------------------------------------------------------------------*/
+// bool toggle = false;
+
+// void loop()
+// {
+//     while (!Serial)
+//     {
+//         ;
+//     }
+
+//     if (!toggle)
+//     {
+//         // Print the grid
+//         Serial.println("LED Grid (64x64):");
+//         for (const auto& row : grid64x64)
+//         {
+//             for (int pixel : row)
+//             {
+//                 Serial.print(pixel ? '#' : '.');
+//             }
+//             Serial.println(); // New line after each row
+//         }
+
+//         Serial.println(); // Extra line for readability
+
+//         toggle = true;
+//     }
+
+//     delay(100000);
+// }
+
 void loop(void)
 {
     timerWrite(timer, 0); // reset timer (feed watchdog)
@@ -1043,13 +1020,11 @@ void loop(void)
     bool singular = false; // multi-sync vs singular mode
                            // auto cmd = "0";
 
-    if (singular)
-    {
+    if (singular) {
         //+----------------------------------------------------+
         // Singular Mode
         //+----------------------------------------------------+
-        while (true)
-        {
+        while (true) {
             anim_StationWaiting_custom(p10, "TEST", 4);
             delay(100);
         }
@@ -1060,40 +1035,33 @@ void loop(void)
         // convert string amp into int
         // int amp = atoi(cmd.c_str());
     }
-    else
-    {
+    else {
         //+----------------------------------------------------+
         // Multi-Sync Mode
         //+----------------------------------------------------+
-        if (cmd == "1")
-        {
+        if (cmd == "1") {
             // Serial.println(cmd.c_str());
             EspNowRoleManager::get_instance().set_master();
             // Serial.println("You are the MASTER");
         }
-        else if (cmd == "0")
-        {
+        else if (cmd == "0") {
             EspNowRoleManager::get_instance().set_slave();
             // Serial.println("You are a SLAVE");
         }
 
         // Master specific block
-        if (EspNowRoleManager::get_instance().is_master())
-        {
+        if (EspNowRoleManager::get_instance().is_master()) {
             // If Led Endpoint connected, send heartbeat to check for
             // updates
-            if (EspNowRoleManager::get_instance().is_cloud_connected())
-            {
+            if (EspNowRoleManager::get_instance().is_cloud_connected()) {
                 run_every_seconds(15000, send_heartbeat);
             }
 
-            if (EspNowRoleManager::get_instance().is_update_required() || EspNowRoleManager::get_instance().first_update_required())
-            {
+            if (EspNowRoleManager::get_instance().is_update_required() || EspNowRoleManager::get_instance().first_update_required()) {
                 Serial.println("[MASTER] -> Update signal received");
                 EspNowRoleManager::get_instance().set_first_update_required(false);
 
-                if (get_action_from_cloud())
-                {
+                if (get_action_from_cloud()) {
                     Serial.println("[MASTER] -> Action received from cloud");
                     setup_action(slave_queue);
                 }
@@ -1101,54 +1069,42 @@ void loop(void)
         }
 
         // Perform action
-        if (EspNowRoleManager::get_instance().is_master() && EspNowRoleManager::get_instance().is_action_set())
-        {
+        if (EspNowRoleManager::get_instance().is_master() && EspNowRoleManager::get_instance().is_action_set()) {
             // Serial.println("Action set, animation starting...");
-            if (EspNowRoleManager::get_instance().is_pattern)
-            {
+            if (EspNowRoleManager::get_instance().is_pattern) {
                 // Serial.println("[It's pattern]");
                 // Animation Selection
                 // Serial.print("Anim in check: ");
                 // Serial.print(EspNowRoleManager::get_instance().pattern_animation);
-                if (EspNowRoleManager::get_instance().pattern_animation == "h_scroll")
-                {
+                if (EspNowRoleManager::get_instance().pattern_animation == "h_scroll") {
                     multianim_horizontal_shift(EspNowRoleManager::get_instance().pattern);
                 }
-                else if (EspNowRoleManager::get_instance().pattern_animation == "d_scroll_fold")
-                {
+                else if (EspNowRoleManager::get_instance().pattern_animation == "d_scroll_fold") {
                     multianim_diagonal_shift_fold(EspNowRoleManager::get_instance().pattern);
                 }
-                else if (EspNowRoleManager::get_instance().pattern_animation == "d_scroll")
-                {
+                else if (EspNowRoleManager::get_instance().pattern_animation == "d_scroll") {
                     multianim_diagonal_shift(EspNowRoleManager::get_instance().pattern);
                 }
-                else if (EspNowRoleManager::get_instance().pattern_animation == "wave")
-                {
+                else if (EspNowRoleManager::get_instance().pattern_animation == "wave") {
                     multianim_wave_pattern();
                 }
-                else if (EspNowRoleManager::get_instance().pattern_animation == "battery")
-                {
+                else if (EspNowRoleManager::get_instance().pattern_animation == "battery") {
                     multianim_battery();
                 }
             }
-            else
-            {
+            else {
                 multianim_scrolling_marquee(EspNowRoleManager::get_instance().display_texts);
             }
 
             delay(1);
         }
 
-        if (EspNowRoleManager::get_instance().is_slave())
-        {
-            if (should_animate)
-            {
-                if (message_to_rcv_slave.flags.test(0))
-                {
+        if (EspNowRoleManager::get_instance().is_slave()) {
+            if (should_animate) {
+                if (message_to_rcv_slave.flags.test(0)) {
                     p10.draw_pattern_static(reconstructedGrid, 4, 0);
                 }
-                else if (message_to_rcv_slave.flags.test(1))
-                {
+                else if (message_to_rcv_slave.flags.test(1)) {
                     // Serial.println(message_to_rcv.bChar);
                     anim_drawMarquee(message_to_rcv_slave.bChar, static_cast<byte>(std::strlen(message_to_rcv_slave.bChar)));
                 }

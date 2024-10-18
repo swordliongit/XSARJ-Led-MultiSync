@@ -1,4 +1,4 @@
-BasedOnStyle:  GNU
+BasedOnStyle:  LLVM
 AlignAfterOpenBracket: Align
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: true
@@ -10,7 +10,7 @@ AllowShortFunctionsOnASingleLine: Empty
 # AllowShortLoopsOnASingleLine: true
 AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakAfterReturnType: None
-BreakBeforeBraces: Allman # Whitesmiths for complete indentation
+BreakBeforeBraces: Stroustrup  # Whitesmiths for complete indentation
 BraceWrapping:
   AfterClass:      true
   AfterControlStatement: true
