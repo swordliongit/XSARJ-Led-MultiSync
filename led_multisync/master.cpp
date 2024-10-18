@@ -13,13 +13,11 @@ void on_data_sent_master(const uint8_t* mac_addr, esp_now_send_status_t status)
     if (print)
         {
             Serial.print("\r\nLast Packet Send Status:\t");
-            Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success"
-                                                          : "Delivery Fail");
+            Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
             char macStr[18];
             Serial.print("Packet to: ");
             // Copies the sender mac address to a string
-            snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-                     mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
+            snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
                      mac_addr[4], mac_addr[5]);
             Serial.print(macStr);
             Serial.print(" send status:\t");
@@ -28,8 +26,7 @@ void on_data_sent_master(const uint8_t* mac_addr, esp_now_send_status_t status)
     // "Delivery Fail"); Serial.println(sizeof(message_to_send.anim));
 }
 
-void on_data_recv_master(const uint8_t* mac, const uint8_t* incomingData,
-                         int len)
+void on_data_recv_master(const uint8_t* mac, const uint8_t* incomingData, int len)
 {
     // Serial.println((uintptr_t)mac, HEX);
     memcpy(&message_to_rcv_master, incomingData, sizeof(message_to_rcv_master));
@@ -40,8 +37,7 @@ void on_data_recv_master(const uint8_t* mac, const uint8_t* incomingData,
 
 bool connect_cloud()
 {
-    const char* server_endpoint
-      = "https://panel.xsarj.com/led/subscribe_master";
+    const char* server_endpoint = "https://panel.xsarj.com/led/subscribe_master";
 
     // Serialize JSON document
     JsonDocument doc;
@@ -68,12 +64,10 @@ bool connect_cloud()
         {
             String response = http.getString();
             JsonDocument response_doc;
-            DeserializationError error
-              = deserializeJson(response_doc, response);
+            DeserializationError error = deserializeJson(response_doc, response);
             if (!error)
                 {
-                    if (response_doc["result"].containsKey("status")
-                        && response_doc["result"]["status"] == "OK")
+                    if (response_doc["result"].containsKey("status") && response_doc["result"]["status"] == "OK")
                         {
                             success = true;
                         }
@@ -126,14 +120,12 @@ void send_heartbeat()
 
             String response = http.getString();
             JsonDocument response_doc;
-            DeserializationError error
-              = deserializeJson(response_doc, response);
+            DeserializationError error = deserializeJson(response_doc, response);
             if (!error)
                 {
                     if (response_doc["result"].containsKey("should_update"))
                         {
-                            bool should_update
-                              = response_doc["result"]["should_update"];
+                            bool should_update = response_doc["result"]["should_update"];
                             role_manager.set_update_required(should_update);
                             // Serial.println(role_manager.is_update_required());
                         }
@@ -181,23 +173,18 @@ bool get_action_from_cloud()
 
             String response = http.getString();
             JsonDocument response_doc;
-            DeserializationError error
-              = deserializeJson(response_doc, response);
+            DeserializationError error = deserializeJson(response_doc, response);
             if (!error)
                 {
                     bool is_pattern = response_doc["result"]["is_pattern"];
-                    String slave_mac_list
-                      = response_doc["result"]["slave_mac_list"];
-                    String display_text
-                      = response_doc["result"]["display_text"];
-                    String pattern_animation
-                      = response_doc["result"]["pattern_animation"];
+                    String slave_mac_list = response_doc["result"]["slave_mac_list"];
+                    String display_text = response_doc["result"]["display_text"];
+                    String pattern_animation = response_doc["result"]["pattern_animation"];
                     String pattern = response_doc["result"]["pattern"];
                     Serial.println(response);
 
                     // Extract and convert MAC addresses
-                    std::vector<String> mac_addresses
-                      = split_string(slave_mac_list, ',');
+                    std::vector<String> mac_addresses = split_string(slave_mac_list, ',');
                     std::vector<std::array<uint8_t, 6>> broadcast_addresses;
 
                     for (const String& mac : mac_addresses)
@@ -207,18 +194,14 @@ bool get_action_from_cloud()
                             broadcast_addresses.push_back(mac_array);
                         }
 
-                    EspNowRoleManager& role_manager
-                      = EspNowRoleManager::get_instance();
+                    EspNowRoleManager& role_manager = EspNowRoleManager::get_instance();
                     role_manager.broadcast_addresses = broadcast_addresses;
                     role_manager.is_pattern = is_pattern;
-                    role_manager.display_texts
-                      = split_string(display_text, ',');
+                    role_manager.display_texts = split_string(display_text, ',');
                     role_manager.pattern_animation = pattern_animation;
                     Serial.println(pattern_animation);
                     Serial.println(role_manager.pattern_animation);
-                    role_manager.pattern = convertFromBitString(
-                      std::string(pattern.c_str()), p10.grid_32.size(),
-                      p10.grid_32[0].size());
+                    role_manager.pattern = convertFromBitString(std::string(pattern.c_str()), p10.grid_32.size(), p10.grid_32[0].size());
 
                     // Serial.print("Broadcast addresses size: ");
                     // Serial.println(role_manager.broadcast_addresses.size());
