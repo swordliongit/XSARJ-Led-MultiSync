@@ -5,8 +5,7 @@
 #include <limits>
 #include <vector>
 
-class PatternAnimator
-{
+class PatternAnimator {
   public:
     DMD* dmd;
     PatternAnimator(DMD* dmdinitialized)
@@ -15,11 +14,13 @@ class PatternAnimator
     }
 
     // multi-sync patterns
-    static std::vector<std::vector<int>> grid;
+    static std::vector<std::vector<int>> line;
     static std::vector<std::vector<int>> grid_turned_off;
     static std::vector<std::vector<int>> square;
     static std::vector<std::vector<int>> square_32;
     static std::vector<std::vector<int>> grid_32;
+    // 64x64
+    static std::vector<std::vector<int>> ball_64;
 
     // 7x35
     static std::vector<std::vector<int>> xsarj;

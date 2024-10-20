@@ -701,10 +701,11 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
 {
     constexpr int ANIM_DELAY = 50;
     constexpr int SWITCH_DELAY = ANIM_DELAY * 4;
-    constexpr size_t MAX_ROW = 32;
+    // constexpr size_t MAX_ROW = 32;
     bool flip = false;
     bool fold = true;
     int shape_length = 4;
+    size_t MAX_ROW = 8 * (slave_queue.size() + 1);
 
     // std::vector<std::vector<int>> grid = p10.square_32;
     // for (auto& row : grid) {
@@ -726,7 +727,7 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
             self_anim_part.push_back(*it);
         }
         p10.draw_pattern_static(self_anim_part, 4, 0);
-        int count = 2;
+        int count = slave_queue.size() - 1;
         // std::cout << "Queue Size: " << slave_queue.size() << "\n";
 
         // Animate Slaves
@@ -1076,20 +1077,23 @@ void loop(void)
                 // Animation Selection
                 // Serial.print("Anim in check: ");
                 // Serial.print(EspNowRoleManager::get_instance().pattern_animation);
-                if (EspNowRoleManager::get_instance().pattern_animation == "h_scroll") {
-                    multianim_horizontal_shift(EspNowRoleManager::get_instance().pattern);
-                }
-                else if (EspNowRoleManager::get_instance().pattern_animation == "d_scroll_fold") {
-                    multianim_diagonal_shift_fold(EspNowRoleManager::get_instance().pattern);
-                }
-                else if (EspNowRoleManager::get_instance().pattern_animation == "d_scroll") {
-                    multianim_diagonal_shift(EspNowRoleManager::get_instance().pattern);
-                }
-                else if (EspNowRoleManager::get_instance().pattern_animation == "wave") {
-                    multianim_wave_pattern();
-                }
-                else if (EspNowRoleManager::get_instance().pattern_animation == "battery") {
-                    multianim_battery();
+                for (const String& animation : EspNowRoleManager::get_instance().animation_list) {
+                    if (animation == "h_scroll") {
+                        multianim_horizontal_shift(p10.line);
+                    }
+                    else if (animation == "d_scroll_fold") {
+                        multianim_diagonal_shift_fold(p10.ball_64);
+                    }
+                    else if (animation == "wave") {
+                        multianim_wave_pattern();
+                    }
+                    else if (animation == "battery") {
+                        multianim_battery();
+                    }
+                    // TODO:
+                    else if (animation == "h_scroll_text") {
+                        multianim_text_shift("XSARJ");
+                    }
                 }
             }
             else {
