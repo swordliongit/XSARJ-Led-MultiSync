@@ -16,7 +16,8 @@ void on_data_sent_master(const uint8_t* mac_addr, esp_now_send_status_t status)
         char macStr[18];
         Serial.print("Packet to: ");
         // Copies the sender mac address to a string
-        snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4],
+                 mac_addr[5]);
         Serial.print(macStr);
         Serial.print(" send status:\t");
     }
@@ -166,6 +167,7 @@ bool get_action_from_cloud()
             String slave_mac_list = response_doc["result"]["slave_mac_list"];
             String display_text = response_doc["result"]["display_text"];
             String animation_list = response_doc["result"]["animation_list"];
+            String custom_text_list = response_doc["result"]["custom_text_list"];
 
             // String pattern_animation = response_doc["result"]["pattern_animation"];
             // String pattern = response_doc["result"]["pattern"];
@@ -186,6 +188,7 @@ bool get_action_from_cloud()
             role_manager.is_pattern = is_pattern;
             role_manager.display_texts = split_string(display_text, ',');
             role_manager.animation_list = split_string(animation_list, ',');
+            role_manager.custom_text_list = split_string(custom_text_list, ',');
             // role_manager.pattern_animation = pattern_animation;
             // Serial.println(pattern_animation);
             // Serial.println(role_manager.pattern_animation);

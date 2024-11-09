@@ -398,23 +398,39 @@ void multianim_horizontal_shift(std::vector<std::vector<int>> grid)
     delay(SWITCH_DELAY * 2);
 }
 
+// Define M_PI if it's not already defined
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+const int WIDTH = 64;
+const int HEIGHT = 64;
+
 class WavePattern {
   private:
-    int verticalOffset;
+    double verticalOffset; // Changed to double for smoother movement
     double horizontalOffset;
     double time;
-    std::mt19937 rng; // <random>
+    std::mt19937 rng;
     std::uniform_real_distribution<> dist;
     bool horizontalShiftEnabled;
     int horizontalShiftDirection;
     double horizontalShiftExtent;
-    const int WIDTH = 64;
-    const int HEIGHT = 64;
+    double minX;
+    double maxX;
+    bool filled;
+    int lineThickness;
+    double verticalStep; // Control vertical movement speed
 
   public:
     std::vector<std::vector<int>> pattern;
-    WavePattern(bool enableHorizontalShift = false) : pattern(HEIGHT, std::vector<int>(WIDTH, 0)), verticalOffset(0), horizontalOffset(0), time(0), rng(std::random_device{}()), dist(-0.05, 0.05), horizontalShiftEnabled(enableHorizontalShift), horizontalShiftDirection(1), horizontalShiftExtent(0)
-    {
+
+    WavePattern(double minXPercent = 0.10, double maxXPercent = 0.40, bool enableHorizontalShift = false, bool isFilled = true, int thickness = 3)
+        : pattern(HEIGHT, std::vector<int>(WIDTH, 0)), verticalOffset(0.0), horizontalOffset(0), time(0), rng(std::random_device{}()),
+          dist(-0.3, 0.3), // Reduced randomness for smoother animation
+          horizontalShiftEnabled(enableHorizontalShift), horizontalShiftDirection(1), horizontalShiftExtent(0), minX(WIDTH * minXPercent),
+          maxX(WIDTH * maxXPercent), filled(isFilled), lineThickness(thickness), verticalStep(0.5)
+    { // Smaller step for smoother movement
         updatePattern();
     }
 
@@ -425,99 +441,266 @@ class WavePattern {
             std::fill(row.begin(), row.end(), 0);
         }
 
-        // Create the wave
-        double baseAmplitude = WIDTH / 8.0; // Reduced amplitude for shorter wave tops
-        double frequencyMod = 1.0 + 0.1 * std::sin(time * 0.1);
+        double range = maxX - minX;
+        double baseAmplitude = range * 0.4;
+        double frequencyMod = 1.0 + 0.15 * std::sin(time * 0.1); // Reduced frequency variation
 
         for (int y = 0; y < HEIGHT; ++y) {
-            // Vary amplitude over time and add some randomness
-            double amplitude = baseAmplitude * (1 + 0.2 * std::sin(time * 0.05)) + dist(rng);
+            // Calculate wave based on position from bottom to top for unfilled version
+            double yPos = filled ? y : (HEIGHT - 1 - y);
+            double yOffset = yPos + verticalOffset;
 
-            // Use a combination of sine waves for more frequent tops
-            double wave = std::sin((y + verticalOffset) * 0.4 * frequencyMod) + // Increased frequency
-                          0.3 * std::sin((y + verticalOffset) * 0.2 * frequencyMod + time * 0.1);
+            // Adjusted wave formula for smoother movement
+            double wave = std::sin(yOffset * (4 * M_PI / HEIGHT) * frequencyMod);
+            wave += 0.4 * std::sin(yOffset * (7 * M_PI / HEIGHT) + time * 0.8);
+            wave += 0.2 * std::sin(yOffset * (11 * M_PI / HEIGHT) - time * 0.5);
 
-            double x = (wave * amplitude) + (WIDTH * 0.6); // Moved base position more to the left
+            // Normalize the wave
+            wave /= 1.6;
 
-            // Apply horizontal offset if enabled
+            // For unfilled version, add progressive stretch towards the right
+            if (!filled) {
+                double stretchFactor = 1.0 + (yPos / HEIGHT) * 0.5; // Increases from bottom to top
+                wave *= stretchFactor;
+            }
+
+            double amplitude = baseAmplitude * (0.9 + 0.2 * std::sin(time * 0.05)) + dist(rng);
+            double x = (wave * amplitude) + (minX + range * 0.5);
+
             if (horizontalShiftEnabled) {
                 x += horizontalOffset;
             }
 
-            // Only draw the wave if it's within the grid
-            if (x >= 0 && x < WIDTH) {
-                int xInt = static_cast<int>(x);
-                pattern[y][xInt] = 1;
-                if (xInt > 0)
-                    pattern[y][xInt - 1] = 1;
-                if (xInt < WIDTH - 1)
-                    pattern[y][xInt + 1] = 1;
+            // Adjust clamping for unfilled version to allow more right-side stretch
+            if (filled) {
+                x = std::max(minX, std::min(x, maxX));
+            }
+            else {
+                x = std::max(minX, std::min(x, maxX * 1.2)); // Allow 20% more stretch to the right
+            }
+
+            int xInt = static_cast<int>(x);
+
+            // Draw the pattern based on whether it's filled or unfilled
+            if (filled) {
+                for (int fillX = 0; fillX <= xInt && fillX < WIDTH; ++fillX) {
+                    pattern[y][fillX] = 1;
+                }
+            }
+            else {
+                // Draw the thick line, accounting for the bottom-to-top view
+                for (int t = -lineThickness / 2; t <= lineThickness / 2; ++t) {
+                    int drawX = xInt + t;
+                    if (drawX >= 0 && drawX < WIDTH) {
+                        pattern[HEIGHT - 1 - y][drawX] = 1; // Flip the y-coordinate
+                    }
+                }
             }
         }
 
-        time += 0.1;
+        time += 0.03; // Reduced time increment for smoother animation
     }
 
     void moveWaveVertical()
     {
-        verticalOffset = (verticalOffset + 1) % HEIGHT;
+        verticalOffset += verticalStep;
+        if (verticalOffset >= HEIGHT) {
+            verticalOffset -= HEIGHT;
+        }
         updatePattern();
     }
 
     void moveWaveHorizontal()
     {
         if (horizontalShiftEnabled) {
-            double minShift = WIDTH * 0.3; // 30% of width as minimum (more to the left)
-            double maxShift = WIDTH * 0.8; // 80% of width as maximum
-            double shiftRange = maxShift - minShift;
+            double shiftRange = maxX - minX;
 
-            horizontalShiftExtent += 0.2 * horizontalShiftDirection; // Increased speed
+            horizontalShiftExtent += 0.2 * horizontalShiftDirection; // Reduced speed for smoother movement
 
             if (horizontalShiftExtent > shiftRange || horizontalShiftExtent < 0) {
-                horizontalShiftDirection *= -1; // Reverse direction
+                horizontalShiftDirection *= -1;
                 horizontalShiftExtent = std::max(0.0, std::min(horizontalShiftExtent, shiftRange));
             }
 
-            horizontalOffset = minShift + horizontalShiftExtent - (WIDTH * 0.6); // Adjust for new base position
+            horizontalOffset = horizontalShiftExtent - (shiftRange * 0.5);
 
             updatePattern();
         }
     }
 
-    void setHorizontalShiftEnabled(bool enabled)
+    // ... (rest of the methods remain the same) ...
+
+    void setVerticalStep(double step)
     {
-        horizontalShiftEnabled = enabled;
+        verticalStep = step;
     }
 
-    // void print() const
-    // {
-    //     for (const auto& row : pattern)
-    //     {
-    //         for (int cell : row)
-    //         {
-    //             std::cout << (cell ? "1" : ".");
-    //         }
-    //         std::cout << std::endl;
-    //     }
-    //     std::cout << std::endl;
-    // }
+    void print() const
+    {
+        for (const auto& row : pattern) {
+            for (int cell : row) {
+                std::cout << (cell ? "1" : ".");
+            }
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+    }
 };
+
+// class WavePattern {
+//   private:
+//     int verticalOffset;
+//     double horizontalOffset;
+//     double time;
+//     std::mt19937 rng;
+//     std::uniform_real_distribution<> dist;
+//     bool horizontalShiftEnabled;
+//     int horizontalShiftDirection;
+//     double horizontalShiftExtent;
+//     double minX;
+//     double maxX;
+//     bool filled;
+//     int lineThickness;
+
+//   public:
+//     std::vector<std::vector<int>> pattern;
+
+//     WavePattern(double minXPercent = 0.10, double maxXPercent = 0.40, bool enableHorizontalShift = false, bool isFilled = true, int thickness = 3)
+//         : pattern(HEIGHT, std::vector<int>(WIDTH, 0)), verticalOffset(0), horizontalOffset(0), time(0), rng(std::random_device{}()), dist(-0.5,
+//         0.5),
+//           horizontalShiftEnabled(enableHorizontalShift), horizontalShiftDirection(1), horizontalShiftExtent(0), minX(WIDTH * minXPercent),
+//           maxX(WIDTH * maxXPercent), filled(isFilled), lineThickness(thickness)
+//     {
+//         updatePattern();
+//     }
+
+//     void updatePattern()
+//     {
+//         // Clear the pattern
+//         for (auto& row : pattern) {
+//             std::fill(row.begin(), row.end(), 0);
+//         }
+
+//         double range = maxX - minX;
+//         double baseAmplitude = range * 0.4; // Use 40% of the range as amplitude for thinner waves
+//         double frequencyMod = 1.0 + 0.2 * std::sin(time * 0.15);
+
+//         for (int y = 0; y < HEIGHT; ++y) {
+//             // Use multiple sine waves with different frequencies for more variation
+//             double wave = std::sin((y + verticalOffset) * (4 * M_PI / HEIGHT) * frequencyMod);
+//             wave += 0.5 * std::sin((y + verticalOffset) * (7 * M_PI / HEIGHT) + time * 1.1);
+//             wave += 0.3 * std::sin((y + verticalOffset) * (11 * M_PI / HEIGHT) - time * 0.7);
+
+//             // Normalize the wave to [-1, 1] range
+//             wave /= 1.8;
+
+//             double amplitude = baseAmplitude * (0.8 + 0.4 * std::sin(time * 0.07)) + dist(rng);
+//             double x = (wave * amplitude) + (minX + range * 0.5); // Center at midpoint of range
+
+//             // Apply horizontal offset if enabled
+//             if (horizontalShiftEnabled) {
+//                 x += horizontalOffset;
+//             }
+
+//             // Clamp x to the desired range
+//             x = std::max(minX, std::min(x, maxX));
+
+//             int xInt = static_cast<int>(x);
+
+//             if (filled) {
+//                 // Fill everything to the left of the wave point
+//                 for (int fillX = 0; fillX <= xInt && fillX < WIDTH; ++fillX) {
+//                     pattern[y][fillX] = 1;
+//                 }
+//             }
+//             else {
+//                 // Draw a thick line for the wave
+//                 for (int t = -lineThickness / 2; t <= lineThickness / 2; ++t) {
+//                     int drawX = xInt + t;
+//                     if (drawX >= 0 && drawX < WIDTH) {
+//                         pattern[y][drawX] = 1;
+//                     }
+//                 }
+//             }
+//         }
+
+//         time += 0.05;
+//     }
+
+//     void moveWaveVertical()
+//     {
+//         verticalOffset = (verticalOffset + 1) % HEIGHT;
+//         updatePattern();
+//     }
+
+//     void moveWaveHorizontal()
+//     {
+//         if (horizontalShiftEnabled) {
+//             double shiftRange = maxX - minX;
+
+//             horizontalShiftExtent += 0.3 * horizontalShiftDirection;
+
+//             if (horizontalShiftExtent > shiftRange || horizontalShiftExtent < 0) {
+//                 horizontalShiftDirection *= -1;
+//                 horizontalShiftExtent = std::max(0.0, std::min(horizontalShiftExtent, shiftRange));
+//             }
+
+//             horizontalOffset = horizontalShiftExtent - (shiftRange * 0.5); // Center the shift
+
+//             updatePattern();
+//         }
+//     }
+
+//     void setHorizontalShiftEnabled(bool enabled)
+//     {
+//         horizontalShiftEnabled = enabled;
+//     }
+
+//     void setFilled(bool isFilled)
+//     {
+//         filled = isFilled;
+//         updatePattern();
+//     }
+
+//     void setRange(double minXPercent, double maxXPercent)
+//     {
+//         minX = WIDTH * minXPercent;
+//         maxX = WIDTH * maxXPercent;
+//         updatePattern();
+//     }
+
+//     void setLineThickness(int thickness)
+//     {
+//         lineThickness = thickness;
+//         updatePattern();
+//     }
+
+//     // void print() const
+//     // {
+//     //     for (const auto& row : pattern) {
+//     //         for (int cell : row) {
+//     //             std::cout << (cell ? "1" : ".");
+//     //         }
+//     //         std::cout << std::endl;
+//     //     }
+//     //     std::cout << std::endl;
+//     // }
+// };
 
 void multianim_wave_pattern()
 {
-    // Create two wave patterns, one with horizontal shift and one without
-    WavePattern waveWithShift(true);
+    WavePattern waveFilled(0.05, 0.40, true, true);
     // WavePattern waveWithoutShift(false);
 
-    constexpr int ANIM_DELAY = 50;
+    constexpr int ANIM_DELAY = 100;
     // std::vector<std::vector<int>> grid = waveWithShift.pattern;
 
     // Animation loop
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 200; ++i) {
         // Animate Self
         std::vector<std::vector<int>> self_anim_part;
-        auto end_iterator = waveWithShift.pattern.begin() + 8;
-        for (auto it = waveWithShift.pattern.begin(); it != end_iterator; ++it) {
+        auto end_iterator = waveFilled.pattern.begin() + 8;
+        for (auto it = waveFilled.pattern.begin(); it != end_iterator; ++it) {
             self_anim_part.push_back(*it);
         }
 
@@ -527,8 +710,8 @@ void multianim_wave_pattern()
 
         while (!slave_queue.empty()) {
             std::vector<std::vector<int>> slave_anim_part;
-            auto end_iterator = waveWithShift.pattern.begin() + (8 * count);
-            for (auto it = waveWithShift.pattern.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
+            auto end_iterator = waveFilled.pattern.begin() + (8 * count);
+            for (auto it = waveFilled.pattern.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
                 slave_anim_part.push_back(*it);
             }
             prepare_next_matrix(slave_anim_part);
@@ -545,9 +728,58 @@ void multianim_wave_pattern()
             proxy_queue.pop();
         }
 
-        waveWithShift.moveWaveVertical();
+        waveFilled.moveWaveVertical();
         // Move the wave horizontally every frame for the shifting version
-        waveWithShift.moveWaveHorizontal();
+        waveFilled.moveWaveHorizontal();
+
+        delay(ANIM_DELAY);
+    }
+}
+
+void multianim_wave_pattern_unfilled()
+{
+    WavePattern waveUnfilled(0.05, 0.85, true, false, 2);
+    // WavePattern waveWithoutShift(false);
+
+    constexpr int ANIM_DELAY = 100;
+    // std::vector<std::vector<int>> grid = waveWithShift.pattern;
+
+    // Animation loop
+    for (int i = 0; i < 200; ++i) {
+        // Animate Self
+        std::vector<std::vector<int>> self_anim_part;
+        auto end_iterator = waveUnfilled.pattern.begin() + 8;
+        for (auto it = waveUnfilled.pattern.begin(); it != end_iterator; ++it) {
+            self_anim_part.push_back(*it);
+        }
+
+        p10.draw_pattern_static(self_anim_part, 4, 0);
+
+        int count = 2;
+
+        while (!slave_queue.empty()) {
+            std::vector<std::vector<int>> slave_anim_part;
+            auto end_iterator = waveUnfilled.pattern.begin() + (8 * count);
+            for (auto it = waveUnfilled.pattern.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
+                slave_anim_part.push_back(*it);
+            }
+            prepare_next_matrix(slave_anim_part);
+
+            ++count;
+
+            esp_err_t result = esp_now_send(std::get<0>(slave_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
+
+            proxy_queue.push(slave_queue.top());
+            slave_queue.pop();
+        }
+        while (!proxy_queue.empty()) {
+            slave_queue.push(proxy_queue.top());
+            proxy_queue.pop();
+        }
+
+        waveUnfilled.moveWaveVertical();
+        // Move the wave horizontally every frame for the shifting version
+        waveUnfilled.moveWaveHorizontal();
 
         delay(ANIM_DELAY);
     }
@@ -573,8 +805,8 @@ void addBatteryFill(std::vector<std::vector<int>>& grid, int startCol, int width
 
 void multianim_battery()
 {
-    constexpr auto ANIM_DELAY = 50;
-    constexpr size_t MAX_BATTERY = 12;
+    constexpr int ANIM_DELAY = 500;
+    constexpr size_t MAX_BATTERY = 6;
     constexpr size_t BLINK_COUNT = 3;
     int shape_length = 4;
     const int HEIGHT = 8;
@@ -592,7 +824,7 @@ void multianim_battery()
         // Blink - Show - Blink - Show - Blink - Show
         // Then we increment Battery
         for (int i = 0; i < BLINK_COUNT; ++i) {
-            p10.draw_pattern_static(self_anim_part, 4, 0);
+            p10.draw_pattern_static(blink, 4, 0);
             int count = 2;
             // std::cout << "Queue Size: " << slave_queue.size() << "\n";
 
@@ -616,7 +848,7 @@ void multianim_battery()
 
             // BLINK
 
-            p10.draw_pattern_static(self_anim_part, 4, 0);
+            p10.draw_pattern_static(battery, 4, 0);
             count = 2;
 
             // Animate Slaves
@@ -647,6 +879,23 @@ void multianim_battery()
             addBatteryFill(battery, 6 + (i * 5));
         }
     }
+
+    // p10.draw_pattern_static(p10.mask, 4, 0);
+    // for (size_t i = 0; i < slave_queue.size() - 1; i++) {
+    //     // Animate Slaves
+    //     while (!slave_queue.empty()) {
+    //         prepare_next_matrix(p10.mask);
+
+    //         esp_err_t result = esp_now_send(std::get<0>(slave_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
+
+    //         proxy_queue.push(slave_queue.top());
+    //         slave_queue.pop();
+    //     }
+    //     while (!proxy_queue.empty()) {
+    //         slave_queue.push(proxy_queue.top());
+    //         proxy_queue.pop();
+    //     }
+    // }
 }
 
 //****************************
@@ -727,7 +976,7 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
             self_anim_part.push_back(*it);
         }
         p10.draw_pattern_static(self_anim_part, 4, 0);
-        int count = slave_queue.size() - 1;
+        int count = 2;
         // std::cout << "Queue Size: " << slave_queue.size() << "\n";
 
         // Animate Slaves
@@ -763,7 +1012,7 @@ void multianim_diagonal_shift_fold(std::vector<std::vector<int>> grid)
 
     // Fold to reverse direction
     for (size_t i = 0; i < MAX_ROW + 1; ++i) {
-        int count = 4;
+        int count = slave_queue.size() + 1;
         while (!proxy_queue.empty()) {
             std::vector<std::vector<int>> slave_anim_part;
             auto end_iterator = grid.begin() + (8 * count);
@@ -965,10 +1214,139 @@ void multianim_scrolling_marquee(std::vector<String>& display_texts)
     }
 }
 
-void multianim_text_shift(const char* text)
+void multianim_text_static(const char* text)
 {
     // For the maximum 64x64 grid
-    auto grid64x64 = stringToLEDGrid(text, std ::strlen(text), 0, 0, 64);
+    auto grid = stringToLEDGrid(text, std ::strlen(text), 0, 0, 8);
+
+    constexpr int ANIM_DELAY = 20; // 20
+    constexpr int SWITCH_DELAY = ANIM_DELAY * 4;
+    size_t MAX_ROW = 8 * (slave_queue.size() + 1);
+    bool flip = false;
+    // p10.draw_pattern_static(p10.grid, 4, 0);
+    // delay(1);
+    // message_to_send_master.flags.set(0);
+    // std::vector<std::vector<int>> self_anim_part;
+    p10.draw_pattern_static(grid, 4, 0);
+    // Serial.println(slave_queue.size());
+    while (!slave_queue.empty()) {
+        // std::vector<std::vector<int>> slave_anim_part;
+        prepare_next_matrix(grid);
+        esp_err_t result = esp_now_send(std::get<0>(slave_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
+
+        proxy_queue.push(slave_queue.top());
+        slave_queue.pop();
+    }
+    while (!proxy_queue.empty()) {
+        slave_queue.push(proxy_queue.top());
+        proxy_queue.pop();
+    }
+    delay(4000);
+}
+
+void multianim_text_shift(const char* text)
+{
+    // Serial.println("\n--- Starting multianim_text_shift ---");
+    // Serial.print("Text length: ");
+    // Serial.println(strlen(text));
+    // Serial.print("Full hex dump of input text: ");
+    // for (int i = 0; i < strlen(text); i++) {
+    //     if ((unsigned char)text[i] < 0x10)
+    //         Serial.print("0");
+    //     Serial.print((unsigned char)text[i], HEX);
+    //     Serial.print(" ");
+    // }
+    // Serial.println();
+    // For the maximum 64x64 grid
+    auto grid = stringToLEDGrid(text, std ::strlen(text), 0, 0, 64);
+
+    constexpr int ANIM_DELAY = 20; // 20
+    constexpr int SWITCH_DELAY = ANIM_DELAY * 4;
+    size_t MAX_ROW = 8 * (slave_queue.size() + 1);
+    bool flip = false;
+    // p10.draw_pattern_static(p10.grid, 4, 0);
+    // delay(1);
+    // message_to_send_master.flags.set(0);
+
+    for (size_t i = 0; i < MAX_ROW - 7; i++) {
+        std::vector<std::vector<int>> self_anim_part;
+        auto end_iterator = grid.begin() + 8;
+        for (auto it = grid.begin(); it != end_iterator; ++it) {
+            self_anim_part.push_back(*it);
+        }
+        p10.draw_pattern_static(self_anim_part, 4, 0);
+        // delay(ANIM_DELAY);
+        int count = 2;
+        // Serial.println(slave_queue.size());
+        while (!slave_queue.empty()) {
+            std::vector<std::vector<int>> slave_anim_part;
+            auto end_iterator = grid.begin() + (8 * count);
+            for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
+                slave_anim_part.push_back(*it);
+            }
+            prepare_next_matrix(slave_anim_part);
+
+            ++count;
+
+            esp_err_t result = esp_now_send(std::get<0>(slave_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
+
+            proxy_queue.push(slave_queue.top());
+            slave_queue.pop();
+        }
+        while (!proxy_queue.empty()) {
+            slave_queue.push(proxy_queue.top());
+            proxy_queue.pop();
+        }
+        shift_matrix_down(grid);
+        delay(ANIM_DELAY);
+    }
+
+    while (!slave_queue.empty()) {
+        proxy_queue.push(slave_queue.top());
+        slave_queue.pop();
+    }
+
+    delay(ANIM_DELAY * 4);
+
+    for (size_t i = 0; i < MAX_ROW - 7; ++i) {
+        int count = proxy_queue.size() + 1;
+        while (!proxy_queue.empty()) {
+            std::vector<std::vector<int>> slave_anim_part;
+            auto end_iterator = grid.begin() + (8 * count);
+            for (auto it = grid.begin() + (8 * (count - 1)); it != end_iterator; ++it) {
+                slave_anim_part.push_back(*it);
+            }
+            prepare_next_matrix(slave_anim_part);
+
+            --count;
+
+            esp_err_t result = esp_now_send(std::get<0>(proxy_queue.top()), (uint8_t*)&message_to_send_master, sizeof(message_to_send_master));
+
+            slave_queue.push(proxy_queue.top());
+            proxy_queue.pop();
+        }
+        while (!slave_queue.empty()) {
+            proxy_queue.push(slave_queue.top());
+            slave_queue.pop();
+        }
+
+        // Animate self
+        std::vector<std::vector<int>> self_anim_part;
+        auto end_iterator = grid.begin() + 8;
+        for (auto it = grid.begin(); it != end_iterator; ++it) {
+            self_anim_part.push_back(*it);
+        }
+        p10.draw_pattern_static(self_anim_part, 4, 0);
+
+        shift_matrix_up(grid);
+        delay(ANIM_DELAY);
+    }
+
+    // Fill the queue back again
+    while (!proxy_queue.empty()) {
+        slave_queue.push(proxy_queue.top());
+        proxy_queue.pop();
+    }
 }
 /*--------------------------------------------------------------------------------------
   loop
@@ -1017,7 +1395,7 @@ void loop(void)
     auto cmd = serial2_get_data("ms_", "!");
     // 0 - 32
     //
-    cmd = "0";
+    cmd = "1";
     bool singular = false; // multi-sync vs singular mode
                            // auto cmd = "0";
 
@@ -1077,14 +1455,24 @@ void loop(void)
                 // Animation Selection
                 // Serial.print("Anim in check: ");
                 // Serial.print(EspNowRoleManager::get_instance().pattern_animation);
+                const char* text = "";
+                int index = 0;
+                auto text_list = EspNowRoleManager::get_instance().custom_text_list;
                 for (const String& animation : EspNowRoleManager::get_instance().animation_list) {
                     if (animation == "h_scroll") {
                         multianim_horizontal_shift(p10.line);
                     }
-                    else if (animation == "d_scroll_fold") {
-                        multianim_diagonal_shift_fold(p10.ball_64);
+                    else if (animation == "static_text") {
+                        multianim_text_static(text_list[index].c_str());
+                    }
+                    else if (animation == "d_scroll") {
+                        multianim_diagonal_shift(p10.ball_64);
                     }
                     else if (animation == "wave") {
+                        // multianim_wave_pattern();
+                        multianim_wave_pattern_unfilled();
+                    }
+                    else if (animation == "wave_filled") {
                         multianim_wave_pattern();
                     }
                     else if (animation == "battery") {
@@ -1092,8 +1480,10 @@ void loop(void)
                     }
                     // TODO:
                     else if (animation == "h_scroll_text") {
-                        multianim_text_shift("XSARJ");
+                        multianim_text_shift(text_list[index].c_str());
                     }
+                    delay(100);
+                    ++index;
                 }
             }
             else {

@@ -26,6 +26,7 @@ class EspNowRoleManager {
     std::vector<std::array<uint8_t, 6>> broadcast_addresses;
     std::vector<String> display_texts;
     std::vector<String> animation_list;
+    std::vector<String> custom_text_list;
     String pattern_animation;
     std::vector<std::vector<int>> pattern;
 
